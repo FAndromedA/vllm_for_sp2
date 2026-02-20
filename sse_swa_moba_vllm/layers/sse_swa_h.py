@@ -8,8 +8,6 @@ from vllm.config.cache import MambaDType
 from vllm.config.model import ModelDType
 from vllm.utils.torch_utils import get_kv_cache_torch_dtype
 
-
-
 from vllm.attention.backends.abstract import AttentionMetadata
 from vllm.config import CacheConfig, ModelConfig, get_current_vllm_config
 from vllm.distributed import (
@@ -113,34 +111,6 @@ def sort_along_l(q, k, v, gk, beta, e, cu_seqlens, K, emulq, emulk):
     
     return q, k, v, gk, beta, e, mask_w, offsets, state_sizes, global_sorted
 
-# def sse_gla_func(
-#     q1: torch.Tensor, k1: torch.Tensor,
-#     q2: torch.Tensor, k2: torch.Tensor, v: torch.Tensor,
-#     gk1: torch.Tensor, gk2: torch.Tensor, 
-#     eta: torch.Tensor, core_attn_out: torch.Tensor,
-#     layer_name: str,
-# ) -> None:
-#     forward_context: ForwardContext = get_forward_context()
-#     self = forward_context.no_compile_layers[layer_name]
-#     self._forward(
-#         q1, k1, q2, k2, gk1, gk2, eta, core_attn_out
-#     )
-
-# def sse_gla_func_fake(
-#     q1: torch.Tensor, k1: torch.Tensor,
-#     q2: torch.Tensor, k2: torch.Tensor, v: torch.Tensor,
-#     gk1: torch.Tensor, gk2: torch.Tensor, 
-#     eta: torch.Tensor, core_attn_out: torch.Tensor,
-#     layer_name: str,
-# ) -> None:
-#     return
-
-# direct_register_custom_op(
-#     op_name="sse_gla_func",
-#     op_func=sse_gla_func,
-#     mutates_args=["core_attn_out"],
-#     fake_impl=sse_gla_func_fake,
-# )
 
 def sse_gdn_func(
     q1: torch.Tensor, k1: torch.Tensor,
@@ -172,529 +142,6 @@ direct_register_custom_op(
     mutates_args=["core_attn_out"],
     fake_impl=sse_gdn_func_fake,
 )
-
-# class SSE_GLA_H(nn.Module, MambaBase):
-#     @property
-#     def mamba_type(self):
-#         return "linear_attention"
-    
-#     def get_state_dtype(
-#         self,
-#     ) -> tuple[torch.dtype, torch.dtype, torch.dtype, torch.dtype]:
-#         if self.model_config is None or self.cache_config is None:
-#             raise ValueError("ModelConfig and CacheConfig must be set.")
-#         return MambaStateDtypeCalculator.linear_attention_state_dtype(
-#             self.model_config.dtype, self.cache_config.mamba_cache_dtype
-#         )
-    
-#     def get_state_shape(
-#         self,
-#     ) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]:
-#         # return MambaStateShapeCalculator.linear_attention_state_shape(
-#         #     self.tp_size, self.num_heads, self.head_dim, 
-#         #     conv_kernel_size=self.conv_size
-#         # )
-#         conv_state_shape = (0, 0)
-#         if self.use_short_conv:
-#             conv_state_shape = (self.tp_heads, self.conv_size - 1)
-        
-#         num_partition = 1 + self.num_sparse_partition
-#         recurrent_state_shape = (num_partition, self.sse_tp_kv_heads, self.sse_head_k_dim, self.sse_head_v_dim)
-#         return (recurrent_state_shape, conv_state_shape, conv_state_shape)
-    
-#     def __init__(
-#         self, 
-#         layer_idx: int,
-#         hidden_size: int =2048,
-#         quant_config: QuantizationConfig | None = None,
-#         cache_config: CacheConfig | None = None,
-#         model_config: ModelConfig | None = None,
-#         expand_v: float = 1.0,
-#         head_dim: int = 256,
-#         num_heads: int = 6,
-#         mode: str = 'chunk',
-#         use_output_gate: bool = True,
-#         use_short_conv: bool = False,
-#         conv_size: int = 4,
-#         conv_bias: bool = False,
-#         num_sparse_partition: int = 4,
-#         num_writer: int = 1,
-#         num_reader: int = 1,
-#         sse_implementation: str = "varlen",
-#         sse_qk_relu: bool = False,
-#         use_q_softmax: bool = False,
-#         use_k_softmax: bool = True,
-#         emulq: bool = True,
-#         emulk: bool = True,
-#         gate_logit_normalizer: int = 16,
-#         gate_low_rank_dim: int = 16,
-#         qkv_bias: bool = False,
-#         # === swa configs ===
-#         swa_num_kv_heads: int | None = None,
-#         swa_qk_norm: bool = False,
-#         swa_dropout: float = 0.5,
-#         window_size: int | None = None,
-#         rope_theta: float | None = 10000.,
-#         max_position_embeddings: int | None = None,
-#         # ===================
-#         rms_norm_eps: float = 1e-5,
-#         prefix: str = "",
-#         **kwargs,
-#     ) -> None:
-#         super().__init__()
-
-#         self.prefix = prefix
-#         self.layer_idx = layer_idx
-#         self.quant_config = quant_config
-#         self.cache_config = cache_config
-#         self.model_config = model_config
-
-#         self.mode = mode
-#         self.hidden_size = hidden_size
-#         self.expand_v = expand_v
-
-#         assert num_reader < num_sparse_partition and num_writer < num_sparse_partition, \
-#             "num_reader and num_writer must be less than num_sparse_partition."
-#         assert sse_implementation in ["mask", "varlen"], \
-#             f"Unknown SSE implementation {sse_implementation}"
-
-#         self.num_sparse_partition = num_sparse_partition
-#         self.num_writer = num_writer
-#         self.num_reader = num_reader
-#         assert self.num_writer == self.num_reader, "Only support num_writer == num_reader for varlen."
-#         assert sse_implementation == "varlen", "Only support varlen implementation for vllm."
-#         # self.sse_implementation = {
-#         #     "mask": self.sse_linear_attention_mask,
-#         #     "varlen": self.sse_linear_attention_varlen,
-#         # }[sse_implementation]
-
-#         self.use_output_gate = use_output_gate
-#         self.use_short_conv = use_short_conv
-#         self.conv_size = conv_size
-#         self.conv_bias = conv_bias
-
-#         self.use_q_softmax = use_q_softmax
-#         self.use_k_softmax = use_k_softmax
-#         self.sse_qk_relu = sse_qk_relu
-#         self.emulq = emulq
-#         self.emulk = emulk
-        
-#         # mha for sse, gqa for swa
-#         self.head_dim = head_dim
-#         self.num_heads = num_heads
-#         self.sse_num_kv_heads = num_heads
-#         self.swa_num_kv_heads = swa_num_kv_heads if swa_num_kv_heads is not None else num_heads
-#         self.swa_num_kv_groups = divide(num_heads, self.swa_num_kv_heads)
-
-#         self.sse_head_k_dim = head_dim
-#         self.sse_head_v_dim = int(self.head_dim * self.expand_v)
-#         self.sse_key_dim = int(self.sse_num_kv_heads * self.sse_head_k_dim)
-#         self.sse_value_dim = int(self.sse_num_kv_heads * self.sse_head_v_dim)
-        
-#         self.swa_q_dim = self.num_heads * self.head_dim
-#         self.swa_kv_dim = int(self.swa_num_kv_heads * self.head_dim)
-#         self.swa_qk_norm = swa_qk_norm
-#         self.qkv_bias = qkv_bias
-
-#         self.swa_dropout = swa_dropout
-#         self.window_size = window_size
-#         self.rope_theta = rope_theta
-#         self.max_position_embeddings = max_position_embeddings
-
-#         assert self.expand_v == 1.0, "Only support expand_v == 1.0 for GLA-H."
-
-#         self.tp_size = get_tensor_model_parallel_world_size()
-#         self.tp_rank = get_tensor_model_parallel_rank()
-
-#         # Validate and calculate tensor parallel heads
-#         assert self.num_heads % self.tp_size == 0, \
-#             f"num_heads ({self.num_heads}) must be divisible by tp_size ({self.tp_size})"
-#         assert self.sse_num_kv_heads % self.tp_size == 0, \
-#             f"sse_num_kv_heads ({self.sse_num_kv_heads}) must be divisible by tp_size ({self.tp_size})"
-#         assert self.swa_num_kv_heads % self.tp_size == 0, \
-#             f"swa_num_kv_heads ({self.swa_num_kv_heads}) must be divisible by tp_size ({self.tp_size})"
-
-#         self.tp_heads = self.num_heads // self.tp_size
-#         self.sse_tp_kv_heads = max(1, self.sse_num_kv_heads // self.tp_size)
-#         self.swa_tp_kv_heads = max(1, self.swa_num_kv_heads // self.tp_size)
-
-#          # Consistency check: Ensure expand_v produces integer values
-#         if not math.isclose(self.sse_num_kv_heads * self.head_dim * expand_v, self.value_dim, rel_tol=1e-5):
-#             raise ValueError(
-#                 f"expand_v={expand_v} does not produce an integer value when multiplied by key_dim={self.key_dim}. "
-#                 f"Resulting value_dim would be {self.sse_num_kv_heads * self.head_dim * expand_v}, which is invalid for nn.Linear.",
-#             )
-#         if self.sse_num_kv_heads > self.num_heads and self.sse_num_kv_heads % self.num_heads != 0:
-#             raise ValueError(
-#                 f"sse_num_kv_heads={self.sse_num_kv_heads} must be divisible by num_heads={self.num_heads}.",
-#             )
-
-#         if not math.isclose(head_dim * expand_v, self.sse_head_v_dim, rel_tol=1e-5):
-#             raise ValueError(
-#                 f"expand_v={expand_v} does not produce an integer value when multiplied by head_dim={head_dim}. "
-#                 f"Resulting head_v_dim would be {head_dim * expand_v}, which is invalid for FusedRMSNormGated.",
-#             )
-#         assert mode in ['chunk', 'fused_recurrent'], f"Not supported mode `{mode}`."
-
-#         self.sse_q_proj = ColumnParallelLinear(
-#             hidden_size, self.sse_key_dim, bias=qkv_bias,
-#             quant_config=quant_config,
-#             prefix=f"{prefix}.sse_q_proj",
-#         )
-#         self.sse_k_proj = ColumnParallelLinear(
-#             hidden_size, self.sse_key_dim, bias=qkv_bias,
-#             quant_config=quant_config,
-#             prefix=f"{prefix}.sse_k_proj",
-#         )
-#         self.sse_v_proj = ColumnParallelLinear(
-#             hidden_size, self.sse_value_dim, bias=qkv_bias,
-#             quant_config=quant_config,
-#             prefix=f"{prefix}.sse_v_proj",
-#         )
-#         self.swa_qkv_proj = QKVParallelLinear(
-#             hidden_size=hidden_size,
-#             head_size=self.head_dim,
-#             total_num_heads=self.num_heads,
-#             total_num_kv_heads=self.swa_num_kv_heads,
-#             bias=qkv_bias,
-#             quant_config=quant_config,
-#             prefix=f"{prefix}.swa_qkv_proj",
-#         )
-
-#         self.lora_q_proj_A = ReplicatedLinear(
-#             hidden_size, self.sse_head_v_dim, bias=False,
-#             quant_config=quant_config,
-#             prefix=f"{prefix}.lora_q_proj_loraA",
-#         )
-#         self.lora_q_proj_B = ColumnParallelLinear(
-#             self.sse_head_v_dim, self.sse_key_dim, bias=False,
-#             quant_config=quant_config,
-#             prefix=f"{prefix}.lora_q_proj_loraB",
-#         )
-
-#         self.lora_k_proj_A = ReplicatedLinear(
-#             hidden_size, self.sse_head_v_dim, bias=False,
-#             quant_config=quant_config,
-#             prefix=f"{prefix}.lora_k_proj_loraA",
-#         )
-#         self.lora_k_proj_B = ColumnParallelLinear(
-#             self.sse_head_v_dim, self.sse_key_dim, bias=False,
-#             quant_config=quant_config,
-#             prefix=f"{prefix}.lora_k_proj_loraB",
-#         )
-
-#         self.gate_logit_normalizer = gate_logit_normalizer
-#         self.sse_gk_proj_0_A = ReplicatedLinear(
-#             hidden_size, gate_low_rank_dim, bias=False,
-#             quant_config=quant_config,
-#             prefix=f"{prefix}.sse_gk_proj_0_loraA",
-#         )
-#         self.sse_gk_proj_0_B = ColumnParallelLinear(
-#             gate_low_rank_dim, self.sse_key_dim, bias=True,
-#             quant_config=quant_config,
-#             prefix=f"{prefix}.sse_gk_proj_0_loraB",
-#         )
-#         self.sse_gk_proj_1_A = ReplicatedLinear(
-#             hidden_size, gate_low_rank_dim, bias=False,
-#             quant_config=quant_config,
-#             prefix=f"{prefix}.sse_gk_proj_1_loraA",
-#         )
-#         self.sse_gk_proj_1_B = ColumnParallelLinear(
-#             gate_low_rank_dim, self.sse_key_dim, bias=True,
-#             quant_config=quant_config,
-#             prefix=f"{prefix}.sse_gk_proj_1_loraB",
-#         )
-
-#         self.sse_e_proj = ReplicatedLinear(
-#             hidden_size, self.num_sparse_partition, bias=False,
-#             # quant_config=quant_config,
-#             prefix=f"{prefix}.sse_e_proj",
-#         ) # 用于之后计算每个 token 的 TopK expert（K = num_writer）
-
-#         if use_short_conv:
-#             self.conv_size = conv_size
-#             self.q_conv1d_shared = ColumnParallelLinear(
-#                 input_size=self.conv_size,
-#                 output_size=self.sse_key_dim,
-#                 bias=conv_bias,
-#                 prefix=f"{prefix}.q_conv1d_shared",
-#             )
-#             self.k_conv1d_shared = ColumnParallelLinear(
-#                 input_size=self.conv_size,
-#                 output_size=self.sse_key_dim,
-#                 bias=conv_bias,
-#                 prefix=f"{prefix}.k_conv1d_shared",
-#             )
-
-#             self.q_conv1d_shared.weight.data = self.q_conv1d_shared.weight.unsqueeze(1)
-#             self.k_conv1d_shared.weight.data = self.k_conv1d_shared.weight.unsqueeze(1)
-
-#         if use_output_gate:
-#             self.sse_g_proj_A = ReplicatedLinear(
-#                 hidden_size, self.sse_head_v_dim, bias=False,
-#                 quant_config=quant_config,
-#                 prefix=f"{prefix}.sse_g_proj_loraA",
-#             )
-#             self.sse_g_proj_B = ColumnParallelLinear(
-#                 self.sse_head_v_dim, self.sse_value_dim, bias=False,
-#                 quant_config=quant_config,
-#                 prefix=f"{prefix}.sse_g_proj_loraB",
-#             )
-#             self.sse_o_norm = FusedRMSNormGated(self.sse_head_v_dim, eps=rms_norm_eps)
-#         else:
-#             self.sse_o_norm = RMSNorm(self.sse_head_v_dim, eps=rms_norm_eps)
-        
-#         self.sse_o_proj = RowParallelLinear(
-#             self.sse_value_dim, hidden_size, bias=False,
-#             quant_config=quant_config, 
-#             prefix=f"{prefix}.sse_o_proj",
-#         )
-#         self.swa_o_proj = RowParallelLinear(
-#             self.swa_q_dim, hidden_size, bias=False,
-#             quant_config=quant_config, 
-#             prefix=f"{prefix}.swa_o_proj",
-#         )
-#         self.sse_merge_norm = RMSNorm(hidden_size, eps=rms_norm_eps)
-#         self.swa_merge_norm = RMSNorm(hidden_size, eps=rms_norm_eps)
-
-#         if swa_qk_norm:
-#             self.swa_q_norm = RMSNorm(self.head_dim, eps=rms_norm_eps)
-#             self.swa_k_norm = RMSNorm(self.head_dim, eps=rms_norm_eps)
-        
-#         self.swa_attn = Attention(
-#             num_heads=self.num_heads,
-#             head_size=self.head_dim,
-#             num_kv_heads=self.swa_num_kv_heads,
-#             cache_config=cache_config,
-#             quant_config=quant_config,
-#             per_layer_sliding_window=window_size,
-#             attn_backend=FlashAttentionBackend(),
-#             prefix=f"{prefix}.swa_attn",
-#         )
-
-#         self.rotary = RotaryEmbedding(
-#             head_size=self.head_dim,
-#             rotary_dim=self.head_dim,
-#             max_position_embeddings=self.max_position_embeddings,
-#             base=self.rope_theta,
-#             is_neox_style=True,
-#             dtype=torch.float32,
-#         )
-    
-#     def forward(
-#         self,
-#         hidden_states: torch.Tensor,
-#         positions: torch.Tensor,
-#         output: torch.Tensor,
-#     ) -> None:
-#         # hidden_state [num_tokens, hidden_size]
-#         num_tokens = hidden_states.size(0)
-#         sse_q1, _ = self.sse_q_proj(hidden_states)
-#         sse_k1, _ = self.sse_k_proj(hidden_states)
-#         sse_q2 = sse_q1 + self.lora_q_proj_B(self.lora_q_proj_A(hidden_states)[0])[0] # [0] because Linear returns output and bias
-#         sse_k2 = sse_k1 + self.lora_k_proj_B(self.lora_k_proj_A(hidden_states)[0])[0]
-#         sse_v, _ = self.sse_v_proj(hidden_states)
-
-#         sse_gk1 = self.sse_gk_proj_0_B(self.sse_gk_proj_0_A(hidden_states)[0])[0]
-#         sse_gk2 = self.sse_gk_proj_1_B(self.sse_gk_proj_1_A(hidden_states)[0])[0]
-
-#         eta, _ = self.sse_e_proj(hidden_states)
-
-#         qkv, _ = self.swa_qkv_proj(hidden_states)
-#         swa_q, swa_k, swa_v = qkv.split([self.swa_q_dim, self.swa_kv_dim, self.swa_kv_dim], dim=-1)
-
-#         core_attn_out = torch.zeros(
-#             (1, num_tokens, self.sse_tp_kv_heads, self.sse_head_v_dim),
-#             dtype=hidden_states.dtype,
-#             device=hidden_states.device,
-#         )
-#         torch.ops.vllm.sse_gla_func(
-#             sse_q1, sse_k1, sse_q2, sse_k2, sse_v, sse_gk1, sse_gk2,
-#             eta, core_attn_out, self.prefix
-#         )
-
-#         if self.use_output_gate:
-#             g = self.sse_g_proj_B(self.sse_g_proj_A(hidden_states)[0])[0]
-#             g = rearrange(g, "n (h d) -> 1 n h d", d=self.sse_head_v_dim)
-#             core_attn_out = self.sse_o_norm(core_attn_out, g)
-#         else:
-#             core_attn_out = self.sse_o_norm(core_attn_out)
-#         core_attn_out = rearrange(core_attn_out, "1 n h d -> n (h d)")
-#         sse_o, _ = self.sse_o_proj(core_attn_out)
-
-#         if self.swa_qk_norm:
-#             swa_q, swa_k = self.swa_q_norm(swa_q), self.swa_k_norm(swa_k)
-        
-#         swa_q, swa_k = self.rotary(
-#             positions, swa_q, swa_k
-#         )
-#         swa_o = self.swa_attn(
-#             swa_q, swa_k, swa_v,
-#         )
-#         swa_o, _ = self.swa_o_proj(swa_o)
-#         output[:] = (self.sse_merge_norm(sse_o) + self.swa_merge_norm(swa_o)) / 2
-
-
-#     def _forward(
-#         self,
-#         q1: torch.Tensor, k1: torch.Tensor,
-#         q2: torch.Tensor, k2: torch.Tensor, v: torch.Tensor,
-#         gk1: torch.Tensor, gk2: torch.Tensor, 
-#         eta: torch.Tensor, core_attn_out: torch.Tensor,
-#     ) -> None:
-#         # see https://github.com/vllm-project/vllm/blob/main/vllm/v1/attention/backend.py#L284 for AttentionMetadata definition
-#         forward_context = get_forward_context()
-#         attn_metadata: AttentionMetadata = forward_context.attn_metadata
-
-#         if attn_metadata is None:
-#             # V1 profile run
-#             return
-        
-#         # TODO: replace AttentionMetadata with custom class (GDNAttentionMetadata)
-#         # assert isinstance(attn_metadata, AttentionMetadata)
-#         has_initial_state = attn_metadata.has_initial_state
-#         non_spec_query_start_loc = attn_metadata.non_spec_query_start_loc
-#         non_spec_state_indices_tensor = attn_metadata.non_spec_state_indices_tensor
-#         num_actual_tokens = attn_metadata.num_actual_tokens
-#         constant_caches = self.kv_cache[forward_context.virtual_engine]
-
-#         q1, k1 = q1[:num_actual_tokens], k1[:num_actual_tokens]
-#         q2, k2 = q2[:num_actual_tokens], k2[:num_actual_tokens]
-#         v = v[:num_actual_tokens]
-#         gk1, gk2 = gk1[:num_actual_tokens], gk2[:num_actual_tokens]
-#         eta = eta[:num_actual_tokens]
-
-#         (recurrent_state, conv_state_q, conv_state_k) = constant_caches
-#         if self.use_short_conv:
-#             conv_state_q = conv_state_q.transpose(-1, -2)
-#             conv_state_k = conv_state_k.transpose(-1, -2)
-
-#             q_conv_weights = self.q_conv1d_shared.weight.view(
-#                 self.q_conv1d_shared.size(0), self.q_conv1d_shared.size(2)
-#             )
-#             k_conv_weights = self.k_conv1d_shared.weight.view(
-#                 self.k_conv1d_shared.size(0), self.k_conv1d_shared.size(2)
-#             )
-
-#             if attn_metadata.num_prefills > 0:
-#                 q1 = causal_conv1d_fn(
-#                     q1,
-#                     q_conv_weights,
-#                     self.q_conv1d_shared.bias,
-#                     activation="silu",
-#                     conv_states=conv_state_q,
-#                     has_initial_state=has_initial_state,
-#                     cache_indices=non_spec_state_indices_tensor,
-#                     query_start_loc=non_spec_query_start_loc,
-#                     metadata=attn_metadata,
-#                 ).transpose(0, 1)
-#                 k1 = causal_conv1d_fn(
-#                     k1,
-#                     k_conv_weights,
-#                     self.k_conv1d_shared.bias,
-#                     activation="silu",
-#                     conv_states=conv_state_k,
-#                     has_initial_state=has_initial_state,
-#                     cache_indices=non_spec_state_indices_tensor,
-#                     query_start_loc=non_spec_query_start_loc,
-#                     metadata=attn_metadata,
-#                 ).transpose(0, 1)
-#             else:
-#                 decode_conv_indices = non_spec_state_indices_tensor[:attn_metadata.num_actual_tokens]
-#                 q1 = causal_conv1d_update(
-#                     q1, 
-#                     conv_state_q,
-#                     q_conv_weights,
-#                     self.q_conv1d_shared.bias,
-#                     activation="silu",
-#                     conv_state_indices=decode_conv_indices,
-#                     validate_data=True,
-#                 )
-#                 k1 = causal_conv1d_update(
-#                     k1, 
-#                     conv_state_k,
-#                     k_conv_weights,
-#                     self.k_conv1d_shared.bias,
-#                     activation="silu",
-#                     conv_state_indices=decode_conv_indices,
-#                     validate_data=True,
-#                 )
-#         q1, q2, k1, k2, gk1, gk2 = map(
-#             lambda x: rearrange(x, "n (h d) -> 1 n h d", d=self.sse_head_k_dim), 
-#             (q1, q2, k1, k2, gk1, gk2)
-#         )
-#         v = rearrange(v, "n (h d) -> 1 n h d", d=self.sse_head_v_dim)
-
-#         if self.use_q_softmax:
-#             q1 = F.softmax(q1.float(), dim=-1).to(v)
-#             q2 = F.softmax(q2.float(), dim=-1).to(v)
-#         else:
-#             q1 = F.relu(q1) if self.sse_qk_relu else F.silu(q1)
-#             q2 = F.relu(q2) if self.sse_qk_relu else F.silu(q2)
-#         if self.use_k_softmax:
-#             k1 = F.softmax(k1.float(), dim=-1).to(v)
-#             k2 = F.softmax(k2.float(), dim=-1).to(v)
-#         else:
-#             k1 = F.relu(k1) if self.sse_qk_relu else F.silu(k1)
-#             k2 = F.relu(k2) if self.sse_qk_relu else F.silu(k2)
-#         v = F.silu(v)
-
-#         gk1 = F.logsigmoid(gk1) / self.gate_logit_normalizer
-#         gk2 = F.logsigmoid(gk2) / self.gate_logit_normalizer
-
-#         if self.sse_tp_kv_heads > self.tp_heads:
-#             group_factor = self.sse_tp_kv_heads // self.tp_heads
-#             q1, q2, k1, k2, gk1, gk2 = map(
-#                 lambda x: repeat(x, '... h d -> ... (h g) d', g=group_factor),
-#                 (q1, q2, k1, k2, gk1, gk2)
-#             )
-        
-#         # |=====| start of sse_linear_attention_varlen |=====|
-#         v1 = v
-#         v2 = v
-#         cu_seqlens = non_spec_query_start_loc
-#         S = len(cu_seqlens) - 1
-#         q2, k2, v2, gk2, _, eta, mask, offsets, state_sizes, global_sorted = sort_along_l(q2, k2, v2, gk2, None, eta, cu_seqlens, self.num_writer, self.emulq, self.emulk)
-#         active_mask = state_sizes > 0 # [S, N]
-#         active_seq_ids2, active_partition_ids2 = torch.nonzero(active_mask, as_tuple=True) # [M], [M]
-#         active_seq_slots2 = non_spec_state_indices_tensor[active_seq_ids2]  # [M]
-
-#         q, k, gk, v = [torch.cat(pair, dim=1) for pair in zip((q1, k1, gk1, v1), (q2, k2, gk2, v2))]
-#         active_seq_slots = torch.cat((
-#             non_spec_state_indices_tensor,
-#             active_seq_slots2
-#         ), dim=0)  # [M1 + M2]
-#         active_partition_ids = torch.cat((
-#             torch.zeros_like(non_spec_state_indices_tensor),
-#             active_partition_ids2 + 1
-#         ), dim=0)  # [M1 + M2]
-#         offsets = torch.cat([cu_seqlens.to(offsets), offsets[1:] + cu_seqlens[-1]])
-#         new_cu_seqlens = offsets
-
-#         if attn_metadata.num_prefills > 0:
-#             # zero_idx 表示没有初始 state 的那些序列在 non_spec_state_indices_tensor 中的位置
-#             zero_idx = non_spec_state_indices_tensor[~has_initial_state]
-#             recurrent_state[zero_idx] = 0
-#             initial_state = recurrent_state[non_spec_state_indices_tensor].contiguous()
-#             # TODO: 需要魔改 gla 内核，使得能够利用 active_seq_slots 和 active_partition_ids 只更新部分 state
-#             (
-#                 core_attn_out_non_spec,
-#                 last_recurrent_state,
-#             ) = chunk_gla()
-#             recurrent_state[active_seq_slots, active_partition_ids] = last_recurrent_state
-#         else:
-#             # TODO: 需要修改 gla 内核, 使得能够直接读取和写入指定位置的 state
-#             (
-#                 core_attn_out_non_spec,
-#                 last_recurrent_state,
-#             ) = fused_recurrent_gla()
-#         # 0 for first dim because batch size is 1
-#         o1, o2 = core_attn_out_non_spec[0, :cu_seqlens[-1]], core_attn_out_non_spec[0, cu_seqlens[-1]:]
-#         o2_reduce = torch.zeros_like(o1)
-#         o2_reduce.index_add_(dim=1, index=global_sorted, source=o2) # 把 o2 按照 global index 汇总到对应位置
-#         core_attn_out[0, :num_actual_tokens] = o1 + o2_reduce
-
-#         # |=====| end of sse_linear_attention_varlen |=====|
 
         
 class SSE_GDN_H(nn.Module, MambaBase):
@@ -823,14 +270,6 @@ class SSE_GDN_H(nn.Module, MambaBase):
         emulq: bool = True,
         emulk: bool = True,
         qkv_bias: bool = False,
-        # === swa configs ===
-        swa_num_kv_heads: int | None = None,
-        swa_qk_norm: bool = False,
-        swa_dropout: float = 0.5,
-        window_size: int | None = None,
-        rope_theta: float | None = 10000.,
-        max_position_embeddings: int | None = None,
-        # ===================
         rms_norm_eps: float = 1e-5,
         prefix: str = "",
         **kwargs,
@@ -874,23 +313,13 @@ class SSE_GDN_H(nn.Module, MambaBase):
         self.head_dim = head_dim
         self.num_heads = num_heads
         self.sse_num_kv_heads = num_heads
-        self.swa_num_kv_heads = swa_num_kv_heads if swa_num_kv_heads is not None else num_heads
-        self.swa_num_kv_groups = divide(num_heads, self.swa_num_kv_heads)
 
         self.sse_head_k_dim = head_dim
         self.sse_head_v_dim = int(self.head_dim * self.expand_v)
         self.sse_key_dim = int(self.sse_num_kv_heads * self.sse_head_k_dim)
         self.sse_value_dim = int(self.sse_num_kv_heads * self.sse_head_v_dim)
         
-        self.swa_q_dim = self.num_heads * self.head_dim
-        self.swa_kv_dim = int(self.swa_num_kv_heads * self.head_dim)
-        self.swa_qk_norm = swa_qk_norm
         self.qkv_bias = qkv_bias
-
-        self.swa_dropout = swa_dropout
-        self.window_size = window_size
-        self.rope_theta = rope_theta
-        self.max_position_embeddings = max_position_embeddings
 
         assert self.expand_v == 1.0, "Only support expand_v == 1.0 for GDN-H."
 
@@ -902,17 +331,14 @@ class SSE_GDN_H(nn.Module, MambaBase):
             f"num_heads ({self.num_heads}) must be divisible by tp_size ({self.tp_size})"
         assert self.sse_num_kv_heads % self.tp_size == 0, \
             f"sse_num_kv_heads ({self.sse_num_kv_heads}) must be divisible by tp_size ({self.tp_size})"
-        assert self.swa_num_kv_heads % self.tp_size == 0, \
-            f"swa_num_kv_heads ({self.swa_num_kv_heads}) must be divisible by tp_size ({self.tp_size})"
 
         self.tp_heads = self.num_heads // self.tp_size
         self.sse_tp_kv_heads = max(1, self.sse_num_kv_heads // self.tp_size)
-        self.swa_tp_kv_heads = max(1, self.swa_num_kv_heads // self.tp_size)
 
         # Consistency check: Ensure expand_v produces integer values
-        if not math.isclose(self.sse_num_kv_heads * self.head_dim * expand_v, self.value_dim, rel_tol=1e-5):
+        if not math.isclose(self.sse_num_kv_heads * self.head_dim * expand_v, self.sse_value_dim, rel_tol=1e-5):
             raise ValueError(
-                f"expand_v={expand_v} does not produce an integer value when multiplied by key_dim={self.key_dim}. "
+                f"expand_v={expand_v} does not produce an integer value when multiplied by key_dim={self.sse_key_dim}. "
                 f"Resulting value_dim would be {self.sse_num_kv_heads * self.head_dim * expand_v}, which is invalid for nn.Linear.",
             )
         if self.sse_num_kv_heads > self.num_heads and self.sse_num_kv_heads % self.num_heads != 0:
@@ -941,15 +367,6 @@ class SSE_GDN_H(nn.Module, MambaBase):
             hidden_size, self.sse_value_dim, bias=False,
             quant_config=quant_config,
             prefix=f"{prefix}.sse_v_proj",
-        )
-        self.swa_qkv_proj = QKVParallelLinear(
-            hidden_size=hidden_size,
-            head_size=self.head_dim,
-            total_num_heads=self.num_heads,
-            total_num_kv_heads=self.swa_num_kv_heads,
-            bias=qkv_bias,
-            quant_config=quant_config,
-            prefix=f"{prefix}.swa_qkv_proj",
         )
 
         self.lora_q_proj_A = ReplicatedLinear(
@@ -1040,37 +457,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
             quant_config=quant_config, 
             prefix=f"{prefix}.sse_o_proj",
         )
-        self.swa_o_proj = RowParallelLinear(
-            self.swa_q_dim, hidden_size, bias=False,
-            quant_config=quant_config, 
-            prefix=f"{prefix}.swa_o_proj",
-        )
-        self.sse_merge_norm = RMSNorm(hidden_size, eps=rms_norm_eps)
-        self.swa_merge_norm = RMSNorm(hidden_size, eps=rms_norm_eps)
-
-        if swa_qk_norm:
-            self.swa_q_norm = RMSNorm(self.head_dim, eps=rms_norm_eps)
-            self.swa_k_norm = RMSNorm(self.head_dim, eps=rms_norm_eps)
-        
-        self.swa_attn = Attention(
-            num_heads=self.num_heads,
-            head_size=self.head_dim,
-            num_kv_heads=self.swa_num_kv_heads,
-            cache_config=cache_config,
-            quant_config=quant_config,
-            per_layer_sliding_window=window_size,
-            attn_backend=FlashAttentionBackend(),
-            prefix=f"{prefix}.swa_attn",
-        )
-
-        self.rotary = RotaryEmbedding(
-            head_size=self.head_dim,
-            rotary_dim=self.head_dim,
-            max_position_embeddings=self.max_position_embeddings,
-            base=self.rope_theta,
-            is_neox_style=True,
-            dtype=torch.float32,
-        )
+    
 
     def forward(
         self,
@@ -1096,9 +483,6 @@ class SSE_GDN_H(nn.Module, MambaBase):
         
         eta, _ = self.sse_e_proj(hidden_states)
         
-        qkv, _ = self.swa_qkv_proj(hidden_states)
-        swa_q, swa_k, swa_v = qkv.split([self.swa_q_dim, self.swa_kv_dim, self.swa_kv_dim], dim=-1)
-
         core_attn_out = torch.zeros(
             (1, num_tokens, self.sse_tp_kv_heads, self.sse_head_v_dim),
             dtype=hidden_states.dtype,
@@ -1117,18 +501,8 @@ class SSE_GDN_H(nn.Module, MambaBase):
             core_attn_out = self.sse_o_norm(core_attn_out)
         core_attn_out = rearrange(core_attn_out, "1 n h d -> n (h d)")
         sse_o, _ = self.sse_o_proj(core_attn_out)
-
-        if self.swa_qk_norm:
-            swa_q, swa_k = self.swa_q_norm(swa_q), self.swa_k_norm(swa_k)
-        
-        swa_q, swa_k = self.rotary(
-            positions, swa_q, swa_k
-        )
-        swa_o = self.swa_attn(
-            swa_q, swa_k, swa_v,
-        )
-        swa_o, _ = self.swa_o_proj(swa_o)
-        output[:] = (self.sse_merge_norm(sse_o) + self.swa_merge_norm(swa_o)) / 2
+        output[:] = sse_o
+        # output[:] = (self.sse_merge_norm(sse_o) + self.swa_merge_norm(swa_o)) / 2
 
 
     def _forward(
@@ -1322,3 +696,221 @@ class SSE_GDN_H(nn.Module, MambaBase):
         o2_reduce.index_add_(dim=1, index=global_sorted, source=o2) # 把 o2 按照 global index 汇总到对应位置
         core_attn_out[0, :num_actual_tokens] = o1 + o2_reduce
         # |=====| end of sse_gdn_attention_varlen |=====|
+
+class SlidingWindowAttention(nn.Module):
+    
+    def __init__(
+        self,
+        layer_idx: int,
+        hidden_size: int = 2048,
+        quant_config: QuantizationConfig | None = None,
+        cache_config: CacheConfig | None = None,
+        model_config: ModelConfig | None = None,
+        head_dim: int = 256,
+        num_heads: int = 6,
+        qkv_bias: bool = False,
+        swa_num_kv_heads: int | None = None,
+        swa_qk_norm: bool = False,
+        swa_dropout: float = 0.5,
+        window_size: int | None = None,
+        rope_theta: float | None = 10000.,
+        max_position_embeddings: int | None = None,
+        rms_norm_eps: float = 1e-5,
+        prefix: str = "",
+    ):
+        self.layer_idx = layer_idx
+        self.hidden_size = hidden_size
+        self.quant_config = quant_config
+        self.cache_config = cache_config
+        self.model_config = model_config
+
+        self.head_dim = head_dim
+        self.total_num_heads = num_heads
+        self.total_num_kv_heads = swa_num_kv_heads if swa_num_kv_heads is not None else num_heads
+        
+        tp_size = get_tensor_model_parallel_world_size()
+        assert self.total_num_heads % tp_size == 0
+        self.num_heads = self.total_num_heads // tp_size
+        if self.total_num_kv_heads >= tp_size:
+            # Number of KV heads is greater than TP size, so we partition
+            # the KV heads across multiple tensor parallel GPUs.
+            assert self.total_num_kv_heads % tp_size == 0
+        else:
+            # Number of KV heads is less than TP size, so we replicate
+            # the KV heads across multiple tensor parallel GPUs.
+            assert tp_size % self.total_num_kv_heads == 0
+        self.num_kv_heads = max(1, self.total_num_kv_heads // tp_size)
+
+        self.q_size = self.num_heads * self.head_dim # only this tp slice
+        self.kv_size = self.num_kv_heads * self.head_dim
+
+        self.swa_dropout = swa_dropout
+        self.window_size = window_size
+        self.rope_theta = rope_theta
+        self.qk_norm = swa_qk_norm
+        self.max_position_embeddings = max_position_embeddings
+
+        self.swa_qkv_proj = QKVParallelLinear(
+            hidden_size=hidden_size,
+            head_size=self.head_dim,
+            total_num_heads=self.total_num_heads,
+            total_num_kv_heads=self.total_num_kv_heads,
+            bias=qkv_bias,
+            quant_config=quant_config,
+            prefix=f"{prefix}.swa_qkv_proj",
+        )
+
+        if self.qk_norm:
+            self.swa_q_norm = RMSNorm(self.head_dim, eps=rms_norm_eps)
+            self.swa_k_norm = RMSNorm(self.head_dim, eps=rms_norm_eps)
+
+        self.rotary = RotaryEmbedding(
+            head_size=self.head_dim,
+            rotary_dim=self.head_dim,
+            max_position_embeddings=self.max_position_embeddings,
+            base=self.rope_theta,
+            is_neox_style=True,
+            dtype=torch.float32,
+        )
+
+        self.swa_attn = Attention(
+            num_heads=self.num_heads,
+            head_size=self.head_dim,
+            num_kv_heads=self.num_kv_heads,
+            cache_config=cache_config,
+            quant_config=quant_config,
+            per_layer_sliding_window=window_size,
+            # attn_backend=FlashAttentionBackend(),
+            prefix=f"{prefix}.swa_attn",
+        )
+        self.swa_o_proj = RowParallelLinear(
+            self.total_num_heads * self.head_dim, hidden_size, bias=False,
+            quant_config=quant_config, 
+            prefix=f"{prefix}.swa_o_proj",
+        )
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        positions: torch.Tensor,
+        output: torch.Tensor,
+    ):
+        qkv, _ = self.swa_qkv_proj(hidden_states)
+        swa_q, swa_k, swa_v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
+        if self.qk_norm:
+            swa_q, swa_k = self.swa_q_norm(swa_q), self.swa_k_norm(swa_k)
+        
+        swa_q, swa_k = self.rotary(
+            positions, swa_q, swa_k
+        )
+        swa_o = self.swa_attn(
+            swa_q, swa_k, swa_v,
+        )
+        swa_o, _ = self.swa_o_proj(swa_o)
+
+        output[:] = swa_o
+
+class SSE_SWA_Hybrid(nn.Module):
+
+    def __init__(
+        self, 
+        layer_idx: int,
+        hidden_size: int =2048,
+        quant_config: QuantizationConfig | None = None,
+        cache_config: CacheConfig | None = None,
+        model_config: ModelConfig | None = None,
+        expand_v: float = 1.0,
+        head_dim: int = 256,
+        num_heads: int = 6,
+        mode: str = 'chunk',
+        use_output_gate: bool = True,
+        use_short_conv: bool = False,
+        allow_neg_eigval: bool = False,
+        conv_size: int = 4,
+        conv_bias: bool = False,
+        num_sparse_partition: int = 4,
+        num_writer: int = 1,
+        num_reader: int = 1,
+        sse_implementation: str = "varlen",
+        sse_qk_relu: bool = False,
+        use_q_softmax: bool = False,
+        use_k_softmax: bool = True,
+        emulq: bool = True,
+        emulk: bool = True,
+        qkv_bias: bool = False,
+        # === swa configs ===
+        swa_num_kv_heads: int | None = None,
+        swa_qk_norm: bool = False,
+        swa_dropout: float = 0.5,
+        window_size: int | None = None,
+        rope_theta: float | None = 10000.,
+        max_position_embeddings: int | None = None,
+        # ===================
+        rms_norm_eps: float = 1e-5,
+        prefix: str = "",
+        **kwargs,
+    ):
+        self.prefix = prefix
+
+        self.sse_attn = SSE_GDN_H(
+            layer_idx=layer_idx,
+            hidden_size=hidden_size,
+            quant_config=quant_config,
+            cache_config=cache_config,
+            model_config=model_config,
+            expand_v=expand_v,
+            head_dim=head_dim,
+            num_heads=num_heads,
+            mode=mode,
+            use_output_gate=use_output_gate,
+            use_short_conv=use_short_conv,
+            allow_neg_eigval=allow_neg_eigval,
+            conv_size=conv_size,
+            conv_bias=conv_bias,
+            num_sparse_partition=num_sparse_partition,
+            num_writer=num_writer,
+            num_reader=num_reader,
+            sse_implementation=sse_implementation,
+            sse_qk_relu=sse_qk_relu,
+            use_q_softmax=use_q_softmax,
+            use_k_softmax=use_k_softmax,
+            emulq=emulq,
+            emulk=emulk,
+            qkv_bias=qkv_bias,
+            rms_norm_eps=rms_norm_eps,
+            prefix=f"{prefix}.sse_attn",
+        )
+        self.sliding_window_attn = SlidingWindowAttention(
+            layer_idx=layer_idx,
+            hidden_size=hidden_size,
+            quant_config=quant_config,
+            cache_config=cache_config,
+            model_config=model_config,
+            head_dim=head_dim,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            swa_num_kv_heads=swa_num_kv_heads,
+            swa_qk_norm=swa_qk_norm,
+            swa_dropout=swa_dropout,
+            window_size=window_size,
+            rope_theta=rope_theta,
+            max_position_embeddings=max_position_embeddings,
+            rms_norm_eps=rms_norm_eps,
+            prefix=f"{prefix}.swa_attn",
+        )
+        self.sse_merge_norm = RMSNorm(hidden_size, eps=rms_norm_eps)
+        self.swa_merge_norm = RMSNorm(hidden_size, eps=rms_norm_eps)
+        
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        positions: torch.Tensor,
+        output: torch.Tensor,
+    ):
+        sse_o = torch.empty_like(output)
+        swa_o = torch.empty_like(output)
+        self.sse_attn(hidden_states, positions, sse_o)
+        self.sliding_window_attn(hidden_states, positions, swa_o)
+        output[:] = (self.sse_merge_norm(sse_o) + self.swa_merge_norm(swa_o)) / 2
+        

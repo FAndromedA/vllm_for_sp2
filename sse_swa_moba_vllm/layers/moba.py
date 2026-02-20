@@ -401,6 +401,7 @@ class MoBA_Attention(nn.Module):
         qk_norm: bool = False,
         window_size: int | None = None,
         rope_theta: float | None = 10000.,
+        is_moba: bool = True,
         moba_chunk_size: int = 1024,
         moba_topk: int = 4,
         max_position_embeddings: int | None = None,
@@ -473,8 +474,34 @@ class MoBA_Attention(nn.Module):
             is_neox_style=True,
             dtype=torch.float32,
         )
-
-        self.attn = MixtureOfBlocksAttention()
+        # num_heads: int,
+        # head_size: int,
+        # scale: float,
+        # num_kv_heads: int | None = None,
+        # alibi_slopes: list[float] | None = None,
+        # cache_config: CacheConfig | None = None,
+        # quant_config: QuantizationConfig | None = None,
+        # logits_soft_cap: float | None = None,
+        # per_layer_sliding_window: int | None = None,
+        # prefix: str = "",
+        # attn_type: str = AttentionType.DECODER,
+        # kv_sharing_target_layer_name: str | None = None,
+        # attn_backend: type[AttentionBackend] | None = None,
+        # is_moba: bool = False,
+        # moba_topk: int | None = None,
+        # moba_chunk_size: int | None = None,
+        self.attn = MixtureOfBlocksAttention(
+            num_heads=self.num_heads,
+            head_size=self.head_dim,
+            scale=self.head_dim ** -0.5,
+            num_kv_heads=self.num_kv_heads,
+            cache_config=self.cache_config,
+            quant_config=self.quant_config,
+            prefix=f"{prefix}.attn",
+            is_moba=is_moba,
+            moba_topk=self.moba_topk,
+            moba_chunk_size=self.moba_chunk_size,
+        )
 
     def forward(
         self,
