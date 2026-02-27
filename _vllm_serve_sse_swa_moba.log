@@ -1,0 +1,246 @@
+nohup: ignoring input
+WARNING 02-26 16:39:12 [vllm.py:1403] Current vLLM config is not set.
+INFO 02-26 16:39:12 [scheduler.py:230] Chunked prefill is enabled with max_num_batched_tokens=2048.
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:39:12 [api_server.py:1351] vLLM API server version 0.13.0
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:39:12 [utils.py:253] non-default args: {'model_tag': '/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k_aux1en4/modeling', 'port': 8711, 'model': '/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k_aux1en4/modeling', 'trust_remote_code': True, 'dtype': 'bfloat16', 'max_model_len': 65536, 'enforce_eager': True, 'served_model_name': ['SSE_SWA_MOBA'], 'block_size': 128, 'gpu_memory_utilization': 0.65}
+[0;36m(APIServer pid=180273)[0;0m The argument `trust_remote_code` is to be used with Auto classes. It has no effect here and is ignored.
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:39:33 [model.py:514] Resolved architecture: SSESWAMoBAForCausalLM
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:39:33 [model.py:1661] Using max model len 65536
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:39:34 [scheduler.py:230] Chunked prefill is enabled with max_num_batched_tokens=2048.
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:39:34 [config.py:312] Disabling cascade attention since it is not supported for hybrid models.
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:39:34 [config.py:439] Setting attention block size to 336 tokens to ensure that attention page size is >= mamba page size.
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:39:34 [config.py:463] Padding mamba page size by 5.00% to ensure that mamba page size and attention page size are exactly equal.
+[0;36m(APIServer pid=180273)[0;0m WARNING 02-26 16:39:34 [vllm.py:622] Enforce eager set, overriding optimization level to -O0
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:39:34 [vllm.py:722] Cudagraph is disabled under eager mode
+[0;36m(EngineCore_DP0 pid=180590)[0;0m WARNING 02-26 16:39:56 [vllm.py:1403] Current vLLM config is not set.
+[0;36m(EngineCore_DP0 pid=180590)[0;0m INFO 02-26 16:39:56 [scheduler.py:230] Chunked prefill is enabled with max_num_batched_tokens=2048.
+[0;36m(EngineCore_DP0 pid=180590)[0;0m INFO 02-26 16:39:56 [core.py:93] Initializing a V1 LLM engine (v0.13.0) with config: model='/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k_aux1en4/modeling', speculative_config=None, tokenizer='/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k_aux1en4/modeling', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=65536, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=True, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_fallback=False, disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False), seed=0, served_model_name=SSE_SWA_MOBA, enable_prefix_caching=False, enable_chunked_prefill=True, pooler_config=None, compilation_config={'level': None, 'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['all'], 'splitting_ops': [], 'compile_mm_encoder': False, 'compile_sizes': [], 'compile_ranges_split_points': [2048], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.NONE: 0>, 'cudagraph_num_of_warmups': 0, 'cudagraph_capture_sizes': [], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': False, 'fuse_act_quant': False, 'fuse_attn_quant': False, 'eliminate_noops': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False}, 'max_cudagraph_capture_size': 0, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False}, 'local_cache_dir': None}
+[0;36m(EngineCore_DP0 pid=180590)[0;0m INFO 02-26 16:39:56 [parallel_state.py:1203] world_size=1 rank=0 local_rank=0 distributed_init_method=tcp://10.119.16.124:33295 backend=nccl
+[0;36m(EngineCore_DP0 pid=180590)[0;0m INFO 02-26 16:39:56 [parallel_state.py:1411] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank 0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m 336
+[0;36m(EngineCore_DP0 pid=180590)[0;0m INFO 02-26 16:39:57 [gpu_model_runner.py:3563] Starting to load model /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k_aux1en4/modeling...
+[0;36m(EngineCore_DP0 pid=180590)[0;0m INFO 02-26 16:39:59 [cuda.py:351] Using FLASH_ATTN attention backend out of potential backends: ('FLASH_ATTN', 'FLASHINFER', 'TRITON_ATTN', 'FLEX_ATTENTION')
+[0;36m(EngineCore_DP0 pid=180590)[0;0m Loading pt checkpoint shards:   0% Completed | 0/11 [00:00<?, ?it/s]
+[0;36m(EngineCore_DP0 pid=180590)[0;0m Loading pt checkpoint shards:   9% Completed | 1/11 [00:03<00:30,  3.02s/it]
+[0;36m(EngineCore_DP0 pid=180590)[0;0m Loading pt checkpoint shards:  18% Completed | 2/11 [00:06<00:27,  3.08s/it]
+[0;36m(EngineCore_DP0 pid=180590)[0;0m Loading pt checkpoint shards:  27% Completed | 3/11 [00:09<00:24,  3.12s/it]
+[0;36m(EngineCore_DP0 pid=180590)[0;0m Loading pt checkpoint shards:  36% Completed | 4/11 [00:12<00:22,  3.16s/it]
+[0;36m(EngineCore_DP0 pid=180590)[0;0m Loading pt checkpoint shards:  45% Completed | 5/11 [00:15<00:19,  3.17s/it]
+[0;36m(EngineCore_DP0 pid=180590)[0;0m Loading pt checkpoint shards:  55% Completed | 6/11 [00:18<00:15,  3.16s/it]
+[0;36m(EngineCore_DP0 pid=180590)[0;0m Loading pt checkpoint shards:  64% Completed | 7/11 [00:22<00:12,  3.16s/it]
+[0;36m(EngineCore_DP0 pid=180590)[0;0m Loading pt checkpoint shards:  73% Completed | 8/11 [00:25<00:09,  3.15s/it]
+[0;36m(EngineCore_DP0 pid=180590)[0;0m Loading pt checkpoint shards:  82% Completed | 9/11 [00:28<00:06,  3.12s/it]
+[0;36m(EngineCore_DP0 pid=180590)[0;0m Loading pt checkpoint shards:  91% Completed | 10/11 [00:30<00:02,  2.87s/it]
+[0;36m(EngineCore_DP0 pid=180590)[0;0m Loading pt checkpoint shards: 100% Completed | 11/11 [00:32<00:00,  2.64s/it]
+[0;36m(EngineCore_DP0 pid=180590)[0;0m Loading pt checkpoint shards: 100% Completed | 11/11 [00:32<00:00,  2.97s/it]
+[0;36m(EngineCore_DP0 pid=180590)[0;0m 
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [2026-02-26 16:40:32] INFO modeling_sse_swa_moba.py:507: 所有模型参数均已成功加载.
+[0;36m(EngineCore_DP0 pid=180590)[0;0m INFO 02-26 16:40:32 [default_loader.py:308] Loading weights took 32.67 seconds
+[0;36m(EngineCore_DP0 pid=180590)[0;0m INFO 02-26 16:40:32 [gpu_model_runner.py:3660] Model loading took 19.3526 GiB memory and 34.075305 seconds
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.0.attn.moba_q: dtype=torch.bfloat16, shape=(2048, 4096), max=11.4375, min=1.049041748046875e-05
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.0.attn.moba_k: dtype=torch.bfloat16, shape=(2048, 1024), max=211.0, min=0.00025177001953125
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.0.attn.moba_v: dtype=torch.bfloat16, shape=(2048, 1024), max=0.2294921875, min=2.9087066650390625e-05
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.0.attn.moba_o: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.0.attn.moba_output: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.1.attn.moba_q: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.1.attn.moba_k: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.1.attn.moba_v: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.1.attn.moba_o: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.1.attn.moba_output: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.2.attn.moba_q: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.2.attn.moba_k: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.2.attn.moba_v: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.2.attn.moba_o: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.2.attn.moba_output: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.3.attn.moba_q: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.3.attn.moba_k: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.3.attn.moba_v: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.3.attn.moba_o: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.3.attn.moba_output: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.4.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.5.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.6.attn.moba_q: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.6.attn.moba_k: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.6.attn.moba_v: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.6.attn.moba_o: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.6.attn.moba_output: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.7.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.8.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.9.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.10.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.11.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.12.attn.moba_q: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.12.attn.moba_k: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.12.attn.moba_v: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.12.attn.moba_o: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.12.attn.moba_output: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.13.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.14.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.15.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.16.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.17.attn.moba_q: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.17.attn.moba_k: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.17.attn.moba_v: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.17.attn.moba_o: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.17.attn.moba_output: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.18.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.19.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.20.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.21.attn.moba_q: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.21.attn.moba_k: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.21.attn.moba_v: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.21.attn.moba_o: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.21.attn.moba_output: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.22.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.23.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.24.attn.moba_q: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.24.attn.moba_k: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.24.attn.moba_v: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.24.attn.moba_o: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.24.attn.moba_output: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.25.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.26.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.27.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.28.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.29.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.30.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.31.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.32.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.33.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.34.attn.sse_o: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.35.attn.moba_q: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.35.attn.moba_k: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.35.attn.moba_v: dtype=torch.bfloat16, shape=(2048, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.35.attn.moba_o: dtype=torch.bfloat16, shape=(2048, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.35.attn.moba_output: dtype=torch.bfloat16, shape=(2048, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m INFO 02-26 16:40:35 [gpu_worker.py:375] Available KV cache memory: 31.96 GiB
+[0;36m(EngineCore_DP0 pid=180590)[0;0m WARNING 02-26 16:40:35 [kv_cache_utils.py:1033] Add 4 padding layers, may waste at most 15.38% KV cache memory
+[0;36m(EngineCore_DP0 pid=180590)[0;0m WARNING 02-26 16:40:35 [kv_cache_utils.py:1033] Add 4 padding layers, may waste at most 15.38% KV cache memory
+[0;36m(EngineCore_DP0 pid=180590)[0;0m INFO 02-26 16:40:35 [kv_cache_utils.py:1291] GPU KV cache size: 119,616 tokens
+[0;36m(EngineCore_DP0 pid=180590)[0;0m INFO 02-26 16:40:35 [kv_cache_utils.py:1296] Maximum concurrency for 65,536 tokens per request: 10.21x
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.0.attn.moba_q: dtype=torch.bfloat16, shape=(256, 4096), max=11.4375, min=1.049041748046875e-05
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.0.attn.moba_k: dtype=torch.bfloat16, shape=(256, 1024), max=211.0, min=0.00025177001953125
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.0.attn.moba_v: dtype=torch.bfloat16, shape=(256, 1024), max=0.2294921875, min=2.9087066650390625e-05
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.0.attn.moba_o: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.0.attn.moba_output: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.1.attn.moba_q: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.1.attn.moba_k: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.1.attn.moba_v: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.1.attn.moba_o: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.1.attn.moba_output: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.2.attn.moba_q: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.2.attn.moba_k: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.2.attn.moba_v: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.2.attn.moba_o: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.2.attn.moba_output: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.3.attn.moba_q: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.3.attn.moba_k: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.3.attn.moba_v: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.3.attn.moba_o: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.3.attn.moba_output: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.4.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.5.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.6.attn.moba_q: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.6.attn.moba_k: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.6.attn.moba_v: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.6.attn.moba_o: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.6.attn.moba_output: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.7.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.8.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.9.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.10.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.11.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.12.attn.moba_q: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.12.attn.moba_k: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.12.attn.moba_v: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.12.attn.moba_o: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.12.attn.moba_output: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.13.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.14.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.15.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.16.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.17.attn.moba_q: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.17.attn.moba_k: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.17.attn.moba_v: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.17.attn.moba_o: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.17.attn.moba_output: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.18.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.19.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.20.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.21.attn.moba_q: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.21.attn.moba_k: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.21.attn.moba_v: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.21.attn.moba_o: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.21.attn.moba_output: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.22.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.23.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.24.attn.moba_q: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.24.attn.moba_k: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.24.attn.moba_v: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.24.attn.moba_o: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.24.attn.moba_output: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.25.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.26.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.27.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.28.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.29.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.30.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.31.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.32.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.33.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.34.attn.sse_o: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.35.attn.moba_q: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.35.attn.moba_k: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.35.attn.moba_v: dtype=torch.bfloat16, shape=(256, 1024), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.35.attn.moba_o: dtype=torch.bfloat16, shape=(256, 4096), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m [GOOD] model.layers.35.attn.moba_output: dtype=torch.bfloat16, shape=(256, 2560), max=0.0, min=0.0
+[0;36m(EngineCore_DP0 pid=180590)[0;0m INFO 02-26 16:40:35 [core.py:259] init engine (profile, create kv cache, warmup model) took 3.14 seconds
+[0;36m(EngineCore_DP0 pid=180590)[0;0m WARNING 02-26 16:40:36 [vllm.py:629] Inductor compilation was disabled by user settings,Optimizations settings that are only active duringInductor compilation will be ignored.
+[0;36m(EngineCore_DP0 pid=180590)[0;0m INFO 02-26 16:40:36 [vllm.py:722] Cudagraph is disabled under eager mode
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [api_server.py:1099] Supported tasks: ['generate']
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [api_server.py:1425] Starting vLLM API server 0 on http://0.0.0.0:8711
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:38] Available routes are:
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /openapi.json, Methods: GET, HEAD
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /docs, Methods: GET, HEAD
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /docs/oauth2-redirect, Methods: GET, HEAD
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /redoc, Methods: GET, HEAD
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /scale_elastic_ep, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /is_scaling_elastic_ep, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /tokenize, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /detokenize, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /inference/v1/generate, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /pause, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /resume, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /is_paused, Methods: GET
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /metrics, Methods: GET
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /health, Methods: GET
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /load, Methods: GET
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /v1/models, Methods: GET
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /version, Methods: GET
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /v1/responses, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /v1/responses/{response_id}, Methods: GET
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /v1/responses/{response_id}/cancel, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /v1/messages, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /v1/chat/completions, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /v1/completions, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /v1/audio/transcriptions, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /v1/audio/translations, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /ping, Methods: GET
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /ping, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /invocations, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /classify, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /v1/embeddings, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /score, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /v1/score, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /rerank, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /v1/rerank, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /v2/rerank, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 16:40:36 [launcher.py:46] Route: /pooling, Methods: POST
+[0;36m(APIServer pid=180273)[0;0m INFO:     Started server process [180273]
+[0;36m(APIServer pid=180273)[0;0m INFO:     Waiting for application startup.
+[0;36m(APIServer pid=180273)[0;0m INFO:     Application startup complete.
+[0;36m(APIServer pid=180273)[0;0m INFO 02-26 17:01:30 [launcher.py:110] Shutting down FastAPI HTTP server.
+[rank0]:[W226 17:01:31.966447521 ProcessGroupNCCL.cpp:1524] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[0;36m(APIServer pid=180273)[0;0m INFO:     Shutting down
+[0;36m(APIServer pid=180273)[0;0m INFO:     Waiting for application shutdown.
+[0;36m(APIServer pid=180273)[0;0m INFO:     Application shutdown complete.

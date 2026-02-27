@@ -82,11 +82,18 @@ from ..layers.sse_swa_h import SSE_SWA_Hybrid, SSE_GDN_H
 from ..layers.moba import MoBA_Attention
 from .configuration_SseSwaMoba import SseSwaMobaConfig
 
+def chk(name, x, prefix=""):
+    if x is None: return
+    if not torch.isfinite(x).all():
+        bad = (~torch.isfinite(x)).sum().item()
+        print(f"[BAD] {name}: nonfinite={bad}, dtype={x.dtype}, shape={tuple(x.shape)}")
+        # 可选：直接 raise 让你看 traceback
+        raise RuntimeError(f"nonfinite in {name}")
+
 class SseSwaMobaDecoderLayer(nn.Module):
     def __init__(
         self,
         vllm_config: VllmConfig,
-        layer_type: str,
         prefix: str = "",
     ) -> None:
         super().__init__()
@@ -96,11 +103,13 @@ class SseSwaMobaDecoderLayer(nn.Module):
         cache_config = vllm_config.cache_config
         quant_config = vllm_config.quant_config
         speculative_config = vllm_config.speculative_config
+        self.prefix = prefix
 
-        self.layer_type = layer_type
-        self.layer_idx = extract_layer_index(layer_type)
+        # self.layer_type = layer_type
+        self.layer_idx = extract_layer_index(prefix)
 
         self.attn_norm = RMSNorm(config.hidden_size, eps=config.norm_eps)
+        
         if config.attn is not None and self.layer_idx in config.attn['layers']:
             if self.layer_idx in config.attn['full_layers']:
                 # Global Attention layers
@@ -114,7 +123,7 @@ class SseSwaMobaDecoderLayer(nn.Module):
                     head_dim=config.head_dim,
                     qkv_bias=config.attn['qkv_bias'],
                     qk_norm=config.attn['qk_norm'],
-                    window_size=None,
+                    window_size=None, 
                     rope_theta=config.attn['rope_theta'],
                     is_moba=False,
                     max_position_embeddings=config.max_position_embeddings,
@@ -144,7 +153,7 @@ class SseSwaMobaDecoderLayer(nn.Module):
                     norm_eps=config.norm_eps,
                     prefix=f"{prefix}.attn",
                 )
-        if self.layer_type == "sse_swa":
+        else:
             if config.linear_attn_type == "gdn":
                 self.attn = SSE_SWA_Hybrid(
                     layer_idx=self.layer_idx,
@@ -192,21 +201,23 @@ class SseSwaMobaDecoderLayer(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        residual: torch.Tensor | None,
+        residual: torch.Tensor = None,
         positions: torch.Tensor = None,
         **kwargs,
     ):
         residual = hidden_states
+        # chk(self.prefix + ".input_hidden_states", hidden_states)
         hidden_states = self.attn_norm(hidden_states)
+        # chk(self.prefix + ".attn_norm_out", hidden_states)
         attention_output = torch.empty_like(hidden_states)
         self.attn(
             hidden_states=hidden_states,
-            residual=residual,
             positions=positions,
             output=attention_output,
         )
-        hidden_states = attention_output
-        hidden_states, residual = self.mlp_norm(hidden_states, hidden_states)
+        # hidden_states = attention_output
+        # chk(self.prefix + ".attn_out", hidden_states)
+        hidden_states, residual = self.mlp_norm(attention_output, residual)
         hidden_states = self.mlp(hidden_states, **kwargs)
         hidden_states = hidden_states + residual
         return hidden_states, residual
@@ -226,15 +237,21 @@ class SseSwaMobaModel(nn.Module):
         self.config = config
         self.vocab_size = config.vocab_size 
 
-        self.embed_tokens = VocabParallelEmbedding(
-            vocab_size=config.vocab_size,
-            embedding_dim=config.hidden_size,
-        )
+        if get_pp_group().is_first_rank or (
+            config.tie_word_embeddings and get_pp_group().is_last_rank
+        ):
+            self.embed_tokens = VocabParallelEmbedding(
+                num_embeddings=config.vocab_size,
+                embedding_dim=config.hidden_size,
+                quant_config=vllm_config.quant_config,
+                prefix=f"{prefix}.embed_tokens",
+            )
+        else:
+            self.embed_tokens = PPMissingLayer()
 
         def get_layer(prefix: str):
             return SseSwaMobaDecoderLayer(
                 vllm_config=vllm_config,
-                layer_type=config.layer_types[extract_layer_index(prefix)],
                 prefix=prefix,
             )
         
@@ -257,7 +274,7 @@ class SseSwaMobaModel(nn.Module):
     
     def forward(
         self,
-        input_ids: torch.Tensor,
+        input_ids: torch.Tensor | None,
         positions: torch.Tensor,
         intermediate_tensors: IntermediateTensors | None = None,
         inputs_embeds: torch.Tensor | None = None,
@@ -276,7 +293,7 @@ class SseSwaMobaModel(nn.Module):
         for layer in islice(self.layers, self.start_layer, self.end_layer):
             hidden_states, residual = layer(
                 hidden_states=hidden_states,
-                residual=residual,
+                # residual=residual,
                 positions=positions,
             )
         
@@ -285,64 +302,111 @@ class SseSwaMobaModel(nn.Module):
                 "hidden_states": hidden_states,
                 "residual": residual,
             })
-        hidden_states, _ = self.norm(hidden_states, residual)
+        hidden_states = self.norm(hidden_states)
         return hidden_states
     
-    # def load_weights(
-    #     self, 
-    #     weights: Iterable[tuple[str, torch.Tensor]]
-    # ) -> set[str]:
-    #     stacked_params_mapping = [
-    #         # (param_name, shard_name, shard_id)
-    #         ("qkv_proj", "q_proj", "q"),
-    #         ("qkv_proj", "k_proj", "k"),
-    #         ("qkv_proj", "v_proj", "v"),
-    #         ("gate_up_proj", "gate_proj", 0),
-    #         ("gate_up_proj", "up_proj", 1),
-    #     ]
+    
+    
+class SseSwaMobaForCausalLM(
+    nn.Module,
+    HasInnerState,
+    SupportsPP,
+    IsHybrid,
+):
 
-    #     params_dict = dict(self.named_parameters())
-    #     loaded_params: set[str] = set()
+    def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
+        config = vllm_config.model_config.hf_config
+        self.vllm_config = vllm_config
+        self.model_config = vllm_config.model_config
+        cache_config = vllm_config.cache_config
+        scheduler_config = vllm_config.scheduler_config
+        assert not cache_config.enable_prefix_caching, (
+            "SseSwaMoba currently does not support prefix caching"
+        )
+        self.quant_config = vllm_config.quant_config
 
-    #     for name, loaded_weight in weights:
-    #         if "rotary_emb.inv_freq" in name:
-    #             continue
-            
-    #         for param_name, weight_name, shard_id in stacked_params_mapping:
-    #             if weight_name not in name:
-    #                 continue
-    #             # replace the weight name in the loaded weight with the corresponding parameter name in the model
-    #             name = name.replace(weight_name, param_name)
-    #             # Skip loading extra bias for GPTQ models
-    #             if name.endswith(".bias") and name not in params_dict:
-    #                 continue
-    #             # Skip layers on other devices.
-    #             if is_pp_missing_parameter(name, self):
-    #                 continue
-    #             if name not in params_dict:
-    #                 continue
-    #             param = params_dict[name]
-    #             weight_loader = param.weight_loader
-    #             weight_loader(param, loaded_weight, shard_id)
-    #             break
-    #         else:
-    #             # Skip loading extra bias for GPTQ models.
-    #             if name.endswith(".bias") and name not in params_dict:
-    #                 continue
-    #             if is_pp_missing_parameter(name, self):
-    #                 continue
-    #             if name not in params_dict:
-    #                 logger.warning_once(
-    #                     f"Parameter {name} not found in params_dict, skip loading"
-    #                 )
-    #                 continue
-    #             param = params_dict[name]
-    #             weight_loader = getattr(
-    #                 param, "weight_loader", default_weight_loader
-    #             )
-    #             weight_loader(param, loaded_weight)
-    #         loaded_params.add(name)
-    #     return loaded_params
+        super().__init__()
+        self.config = config
+        self.scheduler_config = scheduler_config
+
+        self.model = SseSwaMobaModel(
+            vllm_config=vllm_config,
+            prefix=maybe_prefix(prefix, "model")
+        )
+
+        if get_pp_group().is_last_rank:
+            if config.tie_word_embeddings:
+                self.lm_head = self.model.embed_tokens
+            else:
+                self.lm_head = ParallelLMHead(
+                    config.vocab_size,
+                    config.hidden_size,
+                    quant_config=self.quant_config,
+                    prefix=maybe_prefix(prefix, "lm_head"),
+                )
+        else:
+            self.lm_head = PPMissingLayer()
+
+        self.logits_processor = LogitsProcessor(config.vocab_size)
+        self.make_empty_intermediate_tensors = (
+            self.model.make_empty_intermediate_tensors
+        )
+    
+    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
+        return self.model.embed_input_ids(input_ids)
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        positions: torch.Tensor,
+        intermediate_tensors: IntermediateTensors | None = None,
+        inputs_embeds: torch.Tensor | None = None,
+        **kwargs: object,
+    ) -> torch.Tensor | IntermediateTensors:
+        hidden_states = self.model(
+            input_ids, positions, intermediate_tensors, inputs_embeds
+        )
+
+        return hidden_states
+    
+    @classmethod
+    def get_mamba_state_dtype_from_config(
+        cls,
+        vllm_config: "VllmConfig",
+    ) -> tuple[torch.dtype, torch.dtype]:
+        return SSE_GDN_H.SSE_GDN_H_state_dtype(
+            vllm_config.model_config.dtype, vllm_config.cache_config.mamba_cache_dtype
+        )
+
+    @classmethod
+    def get_mamba_state_shape_from_config(
+        cls, vllm_config: "VllmConfig"
+    ) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
+        parallel_config = vllm_config.parallel_config
+        hf_config = vllm_config.model_config.hf_config
+        tp_size = parallel_config.tensor_parallel_size
+        # num_spec = (
+        #     vllm_config.speculative_config.num_speculative_tokens
+        #     if vllm_config.speculative_config
+        #     else 0
+        # )
+        return SSE_GDN_H.SSE_GDN_H_state_shape(
+            tp_size,
+            num_heads=hf_config.num_heads,
+            num_v_heads=hf_config.num_heads,
+            head_k_dim=hf_config.head_dim,
+            head_v_dim=hf_config.head_dim * hf_config.expand_v,
+            use_short_conv=hf_config.use_short_conv,
+            conv_kernel_size=hf_config.conv_size,
+            sparse_partition=hf_config.num_sparse_partition,
+        )
+    
+    def compute_logits(
+        self,
+        hidden_states: torch.Tensor,
+    ) -> torch.Tensor | None:
+        return self.logits_processor(self.lm_head, hidden_states)
+
     
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]):
         """
@@ -352,6 +416,7 @@ class SseSwaMobaModel(nn.Module):
         
         # 1. HF 命名到 vLLM 模块路径的映射字典
         name_mapping = {
+            "embeddings": "embed_tokens",
             # === SSE_GDN_H (sse_attn) 内部模块 ===
             "attn.A_log": "attn.sse_attn.A_log",
             "attn.dt_bias": "attn.sse_attn.dt_bias",
@@ -367,6 +432,9 @@ class SseSwaMobaModel(nn.Module):
             "attn.sse_e_proj": "attn.sse_attn.sse_e_proj",
             "attn.sse_o_norm": "attn.sse_attn.sse_o_norm",
             "attn.sse_o_proj": "attn.sse_attn.sse_o_proj",
+            # if use_output_gate is True:
+            "attn.sse_g_prog.0": "attn.sse_attn.sse_g_proj_A",
+            "attn.sse_g_prog.1": "attn.sse_attn.sse_g_proj_B",
             
             # === SlidingWindowAttention (swa_attn) 内部模块 ===
             "attn.swa_o_proj": "attn.sliding_window_attn.swa_o_proj",
@@ -394,6 +462,7 @@ class SseSwaMobaModel(nn.Module):
         ]
 
         params_dict = dict(self.named_parameters())
+        loaded_param_names = set()
 
         for name, loaded_weight in weights:
             # --- 步骤 A: 替换路径映射 ---
@@ -419,6 +488,7 @@ class SseSwaMobaModel(nn.Module):
                 continue
 
             param = params_dict[name]
+            loaded_param_names.add(name)
             
             # --- 步骤 C: 获取当前参数绑定的 weight_loader ---
             # 如果你自定义了 loader (比如 A_log 的 make_channel_major_loader)，
@@ -432,102 +502,10 @@ class SseSwaMobaModel(nn.Module):
             else:
                 # 标准加载
                 weight_loader(param, loaded_weight)
-    
-class SseSwaMobaForCausalLM(
-    nn.Module,
-    HasInnerState,
-    SupportsPP,
-    IsHybrid,
-):
-    packed_modules_mapping = {
-        "qkv_proj": [
-            "q_proj",
-            "k_proj",
-            "v_proj",
-        ],
-        "gate_up_proj": ["gate_proj", "up_proj"],
-    }
-
-    def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
-        config = vllm_config.model_config.hf_config
-        self.vllm_config = vllm_config
-        self.model_config = vllm_config.model_config
-        cache_config = vllm_config.cache_config
-        scheduler_config = vllm_config.scheduler_config
-        assert not cache_config.enable_prefix_caching, (
-            "SseSwaMoba currently does not support prefix caching"
-        )
-        self.quant_config = vllm_config.quant_config
-
-        super().__init__()
-        self.config = config
-        self.scheduler_config = scheduler_config
-
-        self.model = SseSwaMobaModel(
-            vllm_config=vllm_config,
-            prefix=maybe_prefix(prefix, "model")
-        )
-        self.lm_head = ParallelLMHead(
-            config.vocab_size,
-            config.hidden_size,
-            prefix=maybe_prefix(prefix, "lm_head"),
-        )
-        self.logits_processor = LogitsProcessor(config.vocab_size)
-        self.make_empty_intermediate_tensors = (
-            self.model.make_empty_intermediate_tensors
-        )
-    
-    def embed_input_ids(self, input_ids: torch.Tensor) -> torch.Tensor:
-        return self.model.embed_input_ids(input_ids)
-
-    def forward(
-        self,
-        input_ids: torch.Tensor,
-        positions: torch.Tensor,
-        intermediate_tensors: IntermediateTensors | None = None,
-        inputs_embeds: torch.Tensor | None = None,
-        **kwargs: object,
-    ):
-        hidden_states = self.model(
-            input_ids, positions, intermediate_tensors, inputs_embeds
-        )
-
-        return hidden_states
-    
-    @classmethod
-    def get_mamba_state_dtype_from_config(
-        cls,
-        vllm_config: "VllmConfig",
-    ) -> tuple[torch.dtype, torch.dtype]:
-        return SSE_SWA_Hybrid.SSE_GDN_H_state_dtype(
-            vllm_config.model_config.dtype, vllm_config.cache_config.mamba_cache_dtype
-        )
-
-    @classmethod
-    def get_mamba_state_shape_from_config(
-        cls, vllm_config: "VllmConfig"
-    ) -> tuple[tuple[int, int], tuple[int, int]]:
-        parallel_config = vllm_config.parallel_config
-        hf_config = vllm_config.model_config.hf_config
-        tp_size = parallel_config.tensor_parallel_size
-        # num_spec = (
-        #     vllm_config.speculative_config.num_speculative_tokens
-        #     if vllm_config.speculative_config
-        #     else 0
-        # )
-        return SSE_GDN_H.SSE_GDN_H_state_shape(
-            tp_size,
-            num_heads=hf_config.num_heads,
-            num_v_heads=hf_config.num_heads,
-            head_k_dim=hf_config.head_dim,
-            head_v_dim=hf_config.head_dim * hf_config.expand_v,
-            use_short_conv=hf_config.use_short_conv,
-            conv_kernel_size=hf_config.conv_size,
-            sparse_partition=hf_config.num_sparse_partition,
-        )
-    
-    def compute_logits(
-        self,
-        hidden_states: torch.Tensor,
-    ) -> torch.Tensor | None:
-        return self.logits_processor(self.lm_head, hidden_states)
+        
+        # --- 步骤 E: 检查是否有模型参数未被加载 ---
+        missing_params = set(params_dict.keys()) - loaded_param_names
+        if missing_params:
+            logger.warning(f"以下模型参数未在加载的权重中找到: {missing_params}")
+        else:
+            logger.info(f"所有模型参数均已成功加载.")

@@ -889,6 +889,11 @@ class SSE_GDN(nn.Module, MambaBase):
             prefix=f"{prefix}.o_proj",
         )
 
+        compilation_config = get_current_vllm_config().compilation_config
+        if prefix in compilation_config.static_forward_context:
+            raise ValueError(f"Duplicate layer name: {prefix}")
+        compilation_config.static_forward_context[prefix] = self
+
     def forward(
         self,
         hidden_states: torch.Tensor,

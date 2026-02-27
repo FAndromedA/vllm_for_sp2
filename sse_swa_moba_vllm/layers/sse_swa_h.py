@@ -52,6 +52,22 @@ from vllm.model_executor.layers.rotary_embedding.base import RotaryEmbedding
 
 logger = init_logger(__name__)
 
+def chk(name, x, prefix="", show=False):
+    if x is None: return
+    if prefix != "":
+        name = prefix + "." + name
+    if not torch.isfinite(x).all():
+        bad = (~torch.isfinite(x)).sum().item()
+        max = torch.abs(x).max().item()
+        min = torch.abs(x).min().item()
+        print(f"[BAD] {name}: nonfinite={bad}, dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
+        # 可选：直接 raise 让你看 traceback
+        raise RuntimeError(f"nonfinite in {name}")
+    if show:
+        max = torch.abs(x).max().item()
+        min = torch.abs(x).min().item()
+        print(f"[GOOD] {name}: dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
+
 def sort_along_l(q, k, v, gk, beta, e, cu_seqlens, K, emulq, emulk):
     _, L, H, D = q.shape
     N = e.size(-1)
@@ -85,7 +101,6 @@ def sort_along_l(q, k, v, gk, beta, e, cu_seqlens, K, emulq, emulk):
     global_sorted  = global_idx_flat.take(order)   # gather index
     values_sorted  = values_flat.take(order)       # sorted eta
     # pos_sorted   = relpos_flat.take(order)
-
     ## x: [1, L, H, D] -> y: [1, L*K, H, D]
     # 按排序顺序 gather 张量
     index4gather = global_sorted[None, :, None, None].expand(1, L * K, H, D)
@@ -93,7 +108,7 @@ def sort_along_l(q, k, v, gk, beta, e, cu_seqlens, K, emulq, emulk):
         q, k, v, gk = [torch.gather(x, dim=1, index=index4gather) for x in (q, k, v, gk)]  # GLA
     else:
         q, k, v = [torch.gather(x, dim=1, index=index4gather) for x in (q, k, v)]          # GDN
-        gk, beta = [torch.gather(x, dim=1, index=index4gather[..., 0]) for x in (gk, beta)] 
+        gk, beta = [torch.gather(x, dim=1, index=index4gather[..., 0]) for x in (gk, beta)] # TODO: situations for GQA
     # 应用 expert 权重
     if emulq:
         q = q * values_sorted[None, :, None, None]
@@ -112,7 +127,7 @@ def sort_along_l(q, k, v, gk, beta, e, cu_seqlens, K, emulq, emulk):
     return q, k, v, gk, beta, e, mask_w, offsets, state_sizes, global_sorted
 
 
-def sse_gdn_func(
+def sse_swa_gdn_h_func(
     q1: torch.Tensor, k1: torch.Tensor,
     q2: torch.Tensor, k2: torch.Tensor, v: torch.Tensor,
     g1: torch.Tensor, g2: torch.Tensor, 
@@ -121,12 +136,15 @@ def sse_gdn_func(
     layer_name: str,
 ) -> None:
     forward_context: ForwardContext = get_forward_context()
+    # print("no_compile_layers keys:", list(forward_context.no_compile_layers.keys())[:50])
+    # print("wanted layer_name:", layer_name)
     self = forward_context.no_compile_layers[layer_name]
     self._forward(
-        q1, k1, q2, k2, g1, g2, b1, b2, eta, core_attn_out
+        q1, k1, q2, k2, v, 
+        g1, g2, b1, b2, eta, core_attn_out
     )
 
-def sse_gdn_func_fake(
+def sse_swa_gdn_h_func_fake(
     q1: torch.Tensor, k1: torch.Tensor,
     q2: torch.Tensor, k2: torch.Tensor, v: torch.Tensor,
     g1: torch.Tensor, g2: torch.Tensor, 
@@ -137,10 +155,10 @@ def sse_gdn_func_fake(
     return
 
 direct_register_custom_op(
-    op_name="sse_gdn_func",
-    op_func=sse_gdn_func,
+    op_name="sse_swa_gdn_h_func",
+    op_func=sse_swa_gdn_h_func,
     mutates_args=["core_attn_out"],
-    fake_impl=sse_gdn_func_fake,
+    fake_impl=sse_swa_gdn_h_func_fake,
 )
 
         
@@ -170,8 +188,11 @@ class SSE_GDN_H(nn.Module, MambaBase):
         
         num_partition = 1 + self.num_sparse_partition
         recurrent_state_shape = (num_partition, self.sse_tp_kv_heads, self.sse_head_k_dim, self.sse_head_v_dim)
-        return (conv_state_shape, conv_state_shape, recurrent_state_shape)
-    
+        if self.use_short_conv:
+            return (conv_state_shape, conv_state_shape, recurrent_state_shape)
+        else:
+            return ((), (), recurrent_state_shape)
+
     @classmethod
     def SSE_GDN_H_state_dtype(
         cls,
@@ -199,7 +220,10 @@ class SSE_GDN_H(nn.Module, MambaBase):
         
         num_partition = 1 + sparse_partition
         recurrent_state_shape = (num_partition, num_v_heads // tp_world_size, head_k_dim, head_v_dim)
-        return (conv_state_shape, conv_state_shape, recurrent_state_shape)
+        if use_short_conv:
+            return (conv_state_shape, conv_state_shape, recurrent_state_shape)
+        else:
+            return ((), (), recurrent_state_shape)
 
     """
     为 channel-major 布局的参数 (如 A_log, dt_bias) 创建自定义 loader
@@ -457,6 +481,11 @@ class SSE_GDN_H(nn.Module, MambaBase):
             quant_config=quant_config, 
             prefix=f"{prefix}.sse_o_proj",
         )
+
+        compilation_config = get_current_vllm_config().compilation_config
+        if prefix in compilation_config.static_forward_context:
+            raise ValueError(f"Duplicate layer name: {prefix}")
+        compilation_config.static_forward_context[prefix] = self
     
 
     def forward(
@@ -472,24 +501,30 @@ class SSE_GDN_H(nn.Module, MambaBase):
         sse_q2 = sse_q1 + self.lora_q_proj_B(self.lora_q_proj_A(hidden_states)[0])[0] # [0] because Linear returns output and bias
         sse_k2 = sse_k1 + self.lora_k_proj_B(self.lora_k_proj_A(hidden_states)[0])[0]
         sse_v, _ = self.sse_v_proj(hidden_states)
-
+        # chk("sse_q1", sse_q1, self.prefix, show=True)
+        # chk("sse_q2", sse_q2, self.prefix, show=True)
+        # chk("sse_k1", sse_k1, self.prefix, show=True)
+        # chk("sse_k2", sse_k2, self.prefix, show=True)
+        # chk("sse_v1", sse_v, self.prefix, show=True)
         sse_a, _ = self.sse_a_proj(hidden_states)
-        sse_b, _ = self.sse_b_proj(hidden_states)
+        sse_b, _ = self.sse_b_proj(hidden_states) # [num_tokens, 2 * sse_tp_kv_heads]
         g, beta = fused_gdn_gating(self.A_log, sse_a, sse_b, self.dt_bias)
         if self.allow_neg_eigval:
             beta = beta * 2.        
-        b1, b2 = torch.chunk(beta, 2, dim=-1)
+        b1, b2 = torch.chunk(beta, 2, dim=-1) # [1, num_tokens, 2 * HV] -> [1, num_tokens, HV]
         g1, g2 = torch.chunk(g, 2, dim=-1)
         
-        eta, _ = self.sse_e_proj(hidden_states)
-        
+        # print(f"{hidden_states.shape=}, first 10 hidden states: {hidden_states[:10]}")
+        eta = self.sse_e_proj(hidden_states)[0] # [num_tokens, num_sparse_partition]
+
         core_attn_out = torch.zeros(
             (1, num_tokens, self.sse_tp_kv_heads, self.sse_head_v_dim),
             dtype=hidden_states.dtype,
             device=hidden_states.device,
         )
-        torch.ops.vllm.sse_gdn_func(
-            sse_q1, sse_k1, sse_q2, sse_k2, sse_v, g1, g2, b1, b2,
+        torch.ops.vllm.sse_swa_gdn_h_func(
+            sse_q1, sse_k1, sse_q2, sse_k2, sse_v, 
+            g1, g2, b1, b2,
             eta, core_attn_out, self.prefix
         )
 
@@ -523,6 +558,10 @@ class SSE_GDN_H(nn.Module, MambaBase):
         
         # TODO: replace AttentionMetadata with custom class (GDNAttentionMetadata)
         # assert isinstance(attn_metadata, AttentionMetadata)
+        assert isinstance(attn_metadata, dict)
+        attn_metadata = attn_metadata[self.prefix]
+        assert isinstance(attn_metadata, GDNAttentionMetadata)
+
         has_initial_state = attn_metadata.has_initial_state
         non_spec_query_start_loc = attn_metadata.non_spec_query_start_loc
         non_spec_state_indices_tensor = attn_metadata.non_spec_state_indices_tensor
@@ -536,7 +575,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
         b1, b2 = b1[:num_actual_tokens], b2[:num_actual_tokens]
         eta = eta[:num_actual_tokens]
 
-        (recurrent_state, conv_state_q, conv_state_k) = constant_caches
+        (conv_state_q, conv_state_k, recurrent_state) = constant_caches
         if self.use_short_conv:
             conv_state_q = conv_state_q.transpose(-1, -2)
             conv_state_k = conv_state_k.transpose(-1, -2)
@@ -591,11 +630,11 @@ class SSE_GDN_H(nn.Module, MambaBase):
                     conv_state_indices=decode_conv_indices,
                     validate_data=True,
                 )
-        q1, q2, k1, k2, g1, g2, b1, b2 = map(
-            lambda x: rearrange(x, "n (h d) -> 1 n h d", d=self.sse_head_k_dim), 
-            (q1, q2, k1, k2, g1, g2, b1, b2)
+        q1, q2, k1, k2 = map(
+            lambda x: rearrange(x, "n (h d) -> 1 n h d", d=self.sse_head_k_dim), (q1, q2, k1, k2)
         )
         v = rearrange(v, "n (h d) -> 1 n h d", d=self.sse_head_v_dim)
+        eta = eta.unsqueeze(0) # [1, num_tokens, num_sparse_partition]
 
         if self.use_q_softmax:
             q1 = F.softmax(q1.float(), dim=-1).to(v)
@@ -611,14 +650,15 @@ class SSE_GDN_H(nn.Module, MambaBase):
             k2 = F.relu(k2) if self.sse_qk_relu else F.silu(k2)
         v = F.silu(v)
 
+        # print(f"{q1.shape=}, {k1.shape=}, {v.shape=}, {g1.shape=}, {b1.shape=}, {eta.shape=}, {self.sse_num_kv_heads}, {self.sse_tp_kv_heads=}")
         # actually dont need to repeat, but keep for code consistency
         # TODO: can optimize later
-        if self.sse_tp_kv_heads > self.tp_heads:
-            group_factor = self.sse_tp_kv_heads // self.tp_heads
-            q1, q2, k1, k2, g1, g2, b1, b2 = map(
-                lambda x: repeat(x, '... h d -> ... (h g) d', g=group_factor),
-                (q1, q2, k1, k2, g1, g2, b1, b2)
-            )
+        # if self.sse_tp_kv_heads > self.tp_heads:
+        #     group_factor = self.sse_tp_kv_heads // self.tp_heads
+        #     q1, q2, k1, k2, g1, g2, b1, b2 = map(
+        #         lambda x: repeat(x, '... h d -> ... (h g) d', g=group_factor),
+        #         (q1, q2, k1, k2, g1, g2, b1, b2)
+        #     )
         
         # |=====| start of sse_gdn_attention_varlen |=====|
         v1 = v
@@ -631,6 +671,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
         active_mask = state_sizes > 0 # [S, N], 有效的 (seq, partition) 对
         active_seq_ids2, active_partition_ids2 = torch.nonzero(active_mask, as_tuple=True)
         active_seq_slots2 = non_spec_state_indices_tensor[active_seq_ids2]  # [M]
+        # print(f"active_mask: {active_mask}, active_seq_ids2: {active_seq_ids2}, active_partition_ids2: {active_partition_ids2}, active_seq_slots2: {active_seq_slots2}")
 
         q, k, g, b, v = [torch.cat(pair, dim=1) for pair in zip((q1, k1, g1, b1, v1), (q2, k2, g2, b2, v2))]
         active_seq_slots = torch.cat((
@@ -645,13 +686,16 @@ class SSE_GDN_H(nn.Module, MambaBase):
         new_cu_seqlens = offsets
 
         assert active_seq_slots.numel() == new_cu_seqlens.numel() - 1
+        # print(f"active_seq_slots: {active_seq_slots}, active_partition_ids: {active_partition_ids}, new_cu_seqlens: {new_cu_seqlens}")
 
         if attn_metadata.num_prefills > 0:
-            # zero_idx 表示没有初始 state 的那些序列在 non_spec_state_indices_tensor 中的位置
-            zero_idx = non_spec_state_indices_tensor[~has_initial_state]
-            recurrent_state[zero_idx] = 0
+            if has_initial_state is not None:
+                # zero_idx 表示没有初始 state 的那些序列在 non_spec_state_indices_tensor 中的位置
+                zero_idx = non_spec_state_indices_tensor[~has_initial_state]
+                recurrent_state[zero_idx] = 0
+                print(f"{has_initial_state=}, {zero_idx=}, {active_seq_slots=}")
+                # print("initial_state shape:", recurrent_state.shape) # torch.Size([3062, 5, 8, 128, 128])
             initial_state = recurrent_state[active_seq_slots, active_partition_ids].contiguous()
-            # TODO: 需要魔改 gdn 内核，使得能够利用 active_seq_slots 和 active_partition_ids 只更新部分 state
             (
                 core_attn_out_non_spec,
                 last_recurrent_state,
@@ -666,10 +710,38 @@ class SSE_GDN_H(nn.Module, MambaBase):
                 output_final_state = True,
                 cu_seqlens = new_cu_seqlens,
                 head_first = False,
-                use_qk_l2norm_in_kernel = False,
+                use_qk_l2norm_in_kernel = True,
             )
-            recurrent_state[active_seq_slots, active_partition_ids] = last_recurrent_state
-        else:
+            recurrent_state[active_seq_slots, active_partition_ids] = last_recurrent_state.to(
+                dtype=recurrent_state.dtype,
+                device=recurrent_state.device,
+            )
+            # assert torch.allclose(recurrent_state[active_seq_slots, active_partition_ids], last_recurrent_state.to(
+            #     dtype=recurrent_state.dtype,
+            #     device=recurrent_state.device,
+            # ))
+        elif attn_metadata.num_decodes > 0:
+            # initial_state = recurrent_state[active_seq_slots, active_partition_ids].contiguous()
+            # (
+            #     core_attn_out_non_spec,
+            #     last_recurrent_state,
+            # ) = chunk_gated_delta_rule(
+            #     q = q,
+            #     k = k,
+            #     v = v,
+            #     g = g,
+            #     beta = b,
+            #     scale = None,
+            #     initial_state = initial_state,
+            #     output_final_state = True,
+            #     cu_seqlens = new_cu_seqlens,
+            #     head_first = False,
+            #     use_qk_l2norm_in_kernel = True,
+            # )
+            # recurrent_state[active_seq_slots, active_partition_ids] = last_recurrent_state.to(
+            #     dtype=recurrent_state.dtype,
+            #     device=recurrent_state.device,
+            # )
             # TODO: 需要修改 gdn 内核, 使得能够直接读取和写入指定位置的 state
             (
                 core_attn_out_non_spec,
@@ -686,12 +758,33 @@ class SSE_GDN_H(nn.Module, MambaBase):
                 cu_seqlens = new_cu_seqlens,
                 ssm_state_indices = active_seq_slots,
                 num_accepted_tokens = None,
-                use_qk_l2norm_in_kernel = False,
+                use_qk_l2norm_in_kernel = True,
                 ssm_state_expert_indices = active_partition_ids,
                 num_partitions = self.num_sparse_partition + 1,
             )
-
-        o1, o2 = core_attn_out_non_spec[0, :cu_seqlens[-1]], core_attn_out_non_spec[0, cu_seqlens[-1]:]
+            # tmp = torch.isclose(core_attn_out_non_spec1, core_attn_out_non_spec, rtol=1e-3, atol=1e-2)
+            # # how many elements are not close?
+            # not_close = core_attn_out_non_spec1.numel() - tmp.sum().item()
+            # print(f"not close: {not_close}, percentage: {not_close / core_attn_out_non_spec1.numel() * 100}%")
+            # # max diff between core_attn_out_non_spec1 and core_attn_out_non_spec
+            # diff = torch.max(torch.abs(core_attn_out_non_spec1 - core_attn_out_non_spec))
+            # print(f"max diff: {diff}")
+            # # average diff
+            # diff = torch.mean(torch.abs(core_attn_out_non_spec1 - core_attn_out_non_spec))
+            # print(f"average diff: {diff}")
+            # assert torch.allclose(core_attn_out_non_spec1, core_attn_out_non_spec, rtol=1e-5, atol=1e-5), f"first 10, core1 {core_attn_out_non_spec[:, :10, :5, :5]}, core {core_attn_out_non_spec[:, :10, :5, :5]}"
+        else:
+            core_attn_out_non_spec, last_recurrent_state = None, None
+        
+        # chk("q", q, prefix=self.prefix, show=True)
+        # chk("k", k, prefix=self.prefix, show=True)
+        # chk("v", v, prefix=self.prefix, show=True)
+        # chk("g", g, prefix=self.prefix, show=True)
+        # chk("b", b, prefix=self.prefix, show=True)
+        
+        # chk("last_recurrent_state", last_recurrent_state, prefix=self.prefix, show=True)
+        chk("core_attn_out_non_spec", core_attn_out_non_spec, self.prefix, show=True)
+        o1, o2 = core_attn_out_non_spec[:, :cu_seqlens[-1]], core_attn_out_non_spec[:, cu_seqlens[-1]:]
         o2_reduce = torch.zeros_like(o1)
         o2_reduce.index_add_(dim=1, index=global_sorted, source=o2) # 把 o2 按照 global index 汇总到对应位置
         core_attn_out[0, :num_actual_tokens] = o1 + o2_reduce
@@ -718,6 +811,8 @@ class SlidingWindowAttention(nn.Module):
         rms_norm_eps: float = 1e-5,
         prefix: str = "",
     ):
+        super().__init__()
+
         self.layer_idx = layer_idx
         self.hidden_size = hidden_size
         self.quant_config = quant_config
@@ -776,6 +871,7 @@ class SlidingWindowAttention(nn.Module):
         self.swa_attn = Attention(
             num_heads=self.num_heads,
             head_size=self.head_dim,
+            scale=1.0,
             num_kv_heads=self.num_kv_heads,
             cache_config=cache_config,
             quant_config=quant_config,
@@ -798,7 +894,14 @@ class SlidingWindowAttention(nn.Module):
         qkv, _ = self.swa_qkv_proj(hidden_states)
         swa_q, swa_k, swa_v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         if self.qk_norm:
-            swa_q, swa_k = self.swa_q_norm(swa_q), self.swa_k_norm(swa_k)
+            # swa_q, swa_k = self.swa_q_norm(swa_q), self.swa_k_norm(swa_k)
+            swa_q = self.swa_q_norm(swa_q.view(-1, self.num_heads, self.head_dim)).view(
+                -1, self.q_size
+            )
+            swa_k = self.swa_k_norm(swa_k.view(-1, self.num_kv_heads, self.head_dim)).view(
+                -1, self.kv_size
+            )
+
         
         swa_q, swa_k = self.rotary(
             positions, swa_q, swa_k
@@ -850,8 +953,9 @@ class SSE_SWA_Hybrid(nn.Module):
         prefix: str = "",
         **kwargs,
     ):
-        self.prefix = prefix
+        super().__init__()
 
+        self.prefix = prefix
         self.sse_attn = SSE_GDN_H(
             layer_idx=layer_idx,
             hidden_size=hidden_size,
@@ -912,5 +1016,8 @@ class SSE_SWA_Hybrid(nn.Module):
         swa_o = torch.empty_like(output)
         self.sse_attn(hidden_states, positions, sse_o)
         self.sliding_window_attn(hidden_states, positions, swa_o)
+        chk("sse_o", sse_o, prefix=self.prefix, show=True)
+        # chk("swa_o", swa_o, show=True)
         output[:] = (self.sse_merge_norm(sse_o) + self.swa_merge_norm(swa_o)) / 2
+        # chk("sse_swa_o", output, show=True)
         

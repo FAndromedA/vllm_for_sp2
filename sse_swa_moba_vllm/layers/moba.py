@@ -61,6 +61,22 @@ from vllm.v1.kv_cache_interface import (
 from vllm.logger import init_logger
 logger = init_logger(__name__)
 
+def chk(name, x, prefix="", show=False):
+    if x is None: return
+    if prefix != "":
+        name = prefix + "." + name
+    if not torch.isfinite(x).all():
+        bad = (~torch.isfinite(x)).sum().item()
+        max = torch.abs(x).max().item()
+        min = torch.abs(x).min().item()
+        print(f"[BAD] {name}: nonfinite={bad}, dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
+        # 可选：直接 raise 让你看 traceback
+        raise RuntimeError(f"nonfinite in {name}")
+    if show:
+        max = torch.abs(x).max().item()
+        min = torch.abs(x).min().item()
+        print(f"[GOOD] {name}: dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
+
 class MixtureOfBlocksAttention(nn.Module, AttentionLayerBase):
     # Placeholder for MoBA attention implementation
     def __init__(
@@ -151,7 +167,7 @@ class MixtureOfBlocksAttention(nn.Module, AttentionLayerBase):
         else:
             self.attn_backend = attn_backend
 
-         # prefix caching + batch invariance is currently not supported for
+        # prefix caching + batch invariance is currently not supported for
         # FLASHINFER and TRITON_MLA.
         if (
             cache_config is not None
@@ -199,6 +215,8 @@ class MixtureOfBlocksAttention(nn.Module, AttentionLayerBase):
         backend_name = self.attn_backend.get_name()
         self.backend = AttentionBackendEnum.__members__.get(backend_name)
         self.dtype = dtype
+
+        # print(f"backend_name: {backend_name}, impl_cls: {impl_cls}, backend_enum: {self.backend}")
 
         # For cuda-alike (CUDA and ROCM) and cpu platforms, we control how
         # torch.compile works by registering the attention as one giant
@@ -358,33 +376,7 @@ class MixtureOfBlocksAttention(nn.Module, AttentionLayerBase):
                 dtype=self.kv_cache_torch_dtype,
             )
 
-@maybe_transfer_kv_layer
-def unified_attention(
-    query: torch.Tensor,
-    key: torch.Tensor,
-    value: torch.Tensor,
-    layer_name: str,
-) -> torch.Tensor:
-    attn_metadata, self, kv_cache = get_attention_context(layer_name)
-    output = self.impl.forward(self, query, key, value, kv_cache, attn_metadata)
-
-    return output
-
-
-def unified_attention_fake(
-    query: torch.Tensor,
-    key: torch.Tensor,
-    value: torch.Tensor,
-    layer_name: str,
-) -> torch.Tensor:
-    return torch.empty_like(query).contiguous()
-
-
-direct_register_custom_op(
-    op_name="unified_attention",
-    op_func=unified_attention,
-    fake_impl=unified_attention_fake,
-)
+from vllm.attention.layer import Attention
 
 class MoBA_Attention(nn.Module):
 
@@ -401,7 +393,7 @@ class MoBA_Attention(nn.Module):
         qk_norm: bool = False,
         window_size: int | None = None,
         rope_theta: float | None = 10000.,
-        is_moba: bool = True,
+        is_moba: bool = False,
         moba_chunk_size: int = 1024,
         moba_topk: int = 4,
         max_position_embeddings: int | None = None,
@@ -425,13 +417,12 @@ class MoBA_Attention(nn.Module):
             self.num_kv_heads = num_kv_heads
         self.num_kv_groups = divide(self.num_heads, self.num_kv_heads)
         self.head_dim = head_dim
-        self.q_dim = self.num_heads * self.head_dim
-        self.kv_dim = self.num_kv_heads * self.head_dim
         self.qkv_bias = qkv_bias
         self.qk_norm = qk_norm
 
         self.window_size = window_size
         self.rope_theta = rope_theta
+        self.is_moba = is_moba
         self.moba_chunk_size = moba_chunk_size
         self.moba_topk = moba_topk
         self.max_position_embeddings = max_position_embeddings
@@ -447,6 +438,9 @@ class MoBA_Attention(nn.Module):
         self.tp_heads = self.num_heads // self.tp_size
         self.tp_kv_heads = self.num_kv_heads // self.tp_size
 
+        self.q_dim = self.tp_heads * self.head_dim
+        self.kv_dim = self.tp_kv_heads * self.head_dim
+
         self.qkv_proj = QKVParallelLinear(
             hidden_size=self.hidden_size,
             head_size=self.head_dim,
@@ -457,7 +451,7 @@ class MoBA_Attention(nn.Module):
             prefix=f"{prefix}.qkv_proj",
         )
         self.o_proj = RowParallelLinear(
-            self.q_dim, self.hidden_size, bias=False,
+            self.num_heads * self.head_dim, self.hidden_size, bias=False,
             quant_config=self.quant_config,
             prefix=f"{prefix}.o_proj",
         )
@@ -474,34 +468,27 @@ class MoBA_Attention(nn.Module):
             is_neox_style=True,
             dtype=torch.float32,
         )
-        # num_heads: int,
-        # head_size: int,
-        # scale: float,
-        # num_kv_heads: int | None = None,
-        # alibi_slopes: list[float] | None = None,
-        # cache_config: CacheConfig | None = None,
-        # quant_config: QuantizationConfig | None = None,
-        # logits_soft_cap: float | None = None,
-        # per_layer_sliding_window: int | None = None,
-        # prefix: str = "",
-        # attn_type: str = AttentionType.DECODER,
-        # kv_sharing_target_layer_name: str | None = None,
-        # attn_backend: type[AttentionBackend] | None = None,
-        # is_moba: bool = False,
-        # moba_topk: int | None = None,
-        # moba_chunk_size: int | None = None,
-        self.attn = MixtureOfBlocksAttention(
-            num_heads=self.num_heads,
+        self.attn = Attention(
+            num_heads=self.tp_heads,
             head_size=self.head_dim,
-            scale=self.head_dim ** -0.5,
-            num_kv_heads=self.num_kv_heads,
+            scale=1.0,
+            num_kv_heads=self.tp_kv_heads,
             cache_config=self.cache_config,
             quant_config=self.quant_config,
             prefix=f"{prefix}.attn",
-            is_moba=is_moba,
-            moba_topk=self.moba_topk,
-            moba_chunk_size=self.moba_chunk_size,
         )
+        # self.attn = MixtureOfBlocksAttention(
+            # num_heads=self.tp_heads,
+            # head_size=self.head_dim,
+            # scale=1.0,
+            # num_kv_heads=self.tp_kv_heads,
+            # cache_config=self.cache_config,
+            # quant_config=self.quant_config,
+            # prefix=f"{prefix}.attn",
+            # is_moba=is_moba,
+            # moba_topk=self.moba_topk,
+            # moba_chunk_size=self.moba_chunk_size,
+        # )
 
     def forward(
         self,
@@ -512,12 +499,24 @@ class MoBA_Attention(nn.Module):
         
         qkv, _ = self.qkv_proj(hidden_states)
         q, k, v = qkv.split([self.q_dim, self.kv_dim, self.kv_dim], dim=-1)
+        chk("q", q, show=True)
         if self.qk_norm:
-            q, k = self.q_norm(q), self.k_norm(k)
-
+            q = self.q_norm(q.view(-1, self.tp_heads, self.head_dim)).view(
+                -1, self.q_dim
+            )
+            k = self.k_norm(k.view(-1, self.tp_kv_heads, self.head_dim)).view(
+                -1, self.kv_dim
+            )
+        chk("q_normed", q)
         q, k = self.rotary(positions, q, k)
         o = self.attn(
-            q=q, k=k, v=v, 
+            query=q, key=k, value=v, 
         )
+        chk("moba_q", q, self.prefix, show=True)
+        chk("moba_k", k, self.prefix, show=True)
+        chk("moba_v", v, self.prefix, show=True)
+        chk("moba_o", o, self.prefix, show=True)
         output[:], _ = self.o_proj(o)
+        chk("moba_output", output, self.prefix, show=True)
+
         

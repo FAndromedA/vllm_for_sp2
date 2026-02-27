@@ -1,0 +1,2 @@
+[vllm.general_plugins]
+sse_swa_moba_model = sse_swa_moba_vllm:register_model

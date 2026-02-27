@@ -63,6 +63,9 @@ class SseSwaMobaConfig(PretrainedConfig):
             vocab_size: int = 32000,
             **kwargs,
     ):
+        # vllm must have
+        self.num_attention_heads = num_heads
+
         self.attn_mode = attn_mode
         self.hidden_size = hidden_size
         self.expand_v = expand_v

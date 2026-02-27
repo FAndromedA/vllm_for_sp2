@@ -7,6 +7,6 @@ def register_model():
 
     AutoConfig.register("sse_swa_moba", SseSwaMobaConfig)
     ModelRegistry.register_model(
-        "SseSwaMobaForCausalLM",
-        "SpikingBrain.sse_swa_moba.modeling_sse_swa_moba:SseSwaMobaForCausalLM",
+        "SSESWAMoBAForCausalLM",
+        "sse_swa_moba_vllm.sse_swa_moba.modeling_sse_swa_moba:SseSwaMobaForCausalLM",
     )

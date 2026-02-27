@@ -142,7 +142,7 @@ def sort_along_l(q, k, v, gk, beta, e, cu_seqlens, K, emulq, emulk):
 #     fake_impl=sse_gla_func_fake,
 # )
 
-def sse_gdn_func(
+def sse_swa_gdn_func(
     q1: torch.Tensor, k1: torch.Tensor,
     q2: torch.Tensor, k2: torch.Tensor, v: torch.Tensor,
     g1: torch.Tensor, g2: torch.Tensor, 
@@ -156,7 +156,7 @@ def sse_gdn_func(
         q1, k1, q2, k2, g1, g2, b1, b2, eta, core_attn_out
     )
 
-def sse_gdn_func_fake(
+def sse_swa_gdn_func_fake(
     q1: torch.Tensor, k1: torch.Tensor,
     q2: torch.Tensor, k2: torch.Tensor, v: torch.Tensor,
     g1: torch.Tensor, g2: torch.Tensor, 
@@ -167,10 +167,10 @@ def sse_gdn_func_fake(
     return
 
 direct_register_custom_op(
-    op_name="sse_gdn_func",
-    op_func=sse_gdn_func,
+    op_name="sse_swa_gdn_func",
+    op_func=sse_swa_gdn_func,
     mutates_args=["core_attn_out"],
-    fake_impl=sse_gdn_func_fake,
+    fake_impl=sse_swa_gdn_func_fake,
 )
 
 # class SSE_GLA_H(nn.Module, MambaBase):
@@ -1072,6 +1072,11 @@ class SSE_GDN_H(nn.Module, MambaBase):
             dtype=torch.float32,
         )
 
+        compilation_config = get_current_vllm_config().compilation_config
+        if prefix in compilation_config.static_forward_context:
+            raise ValueError(f"Duplicate layer name: {prefix}")
+        compilation_config.static_forward_context[prefix] = self
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -1104,7 +1109,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
             dtype=hidden_states.dtype,
             device=hidden_states.device,
         )
-        torch.ops.vllm.sse_gdn_func(
+        torch.ops.vllm.sse_swa_gdn_func(
             sse_q1, sse_k1, sse_q2, sse_k2, sse_v, g1, g2, b1, b2,
             eta, core_attn_out, self.prefix
         )
