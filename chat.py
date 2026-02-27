@@ -42,11 +42,12 @@ messages = [
 def chat():
     print("输入 exit 退出")
     print(model.device)
-    while True:
+    # while True:
+    if True:
         # user_input = input("\nUser: ")
         user_input = "你好，请介绍一下你自己。"
-        if user_input.lower() == "exit":
-            break
+        # if user_input.lower() == "exit":
+        #     break
         
         messages.append({"role": "user", "content": user_input})
         

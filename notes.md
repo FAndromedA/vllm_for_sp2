@@ -16,6 +16,7 @@ curl http://localhost:8711/v1/chat/completions \
   -d '{
         "model": "SSE_SWA_MOBA",
         "messages": [
+          {"role": "system", "content": "You are a helpful assistant."},
           {"role": "user", "content": "你好，请介绍一下你自己。"}
         ],
         "temperature": 0.7,

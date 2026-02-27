@@ -32,7 +32,8 @@ from vllm.logger import init_logger
 
 from vllm.model_executor.layers.fused_moe import SharedFusedMoE
 from vllm.model_executor.layers.fused_moe.config import RoutingMethodType
-from vllm.model_executor.layers.layernorm import RMSNorm
+# from vllm.model_executor.layers.layernorm import RMSNorm
+from fla.modules import RMSNorm
 from vllm.model_executor.layers.linear import (
     ColumnParallelLinear,
     QKVParallelLinear,
@@ -99,6 +100,7 @@ class SseSwaMobaDecoderLayer(nn.Module):
         super().__init__()
 
         config = vllm_config.model_config.hf_config
+        self.config = config
         model_config = vllm_config.model_config
         cache_config = vllm_config.cache_config
         quant_config = vllm_config.quant_config
@@ -108,7 +110,8 @@ class SseSwaMobaDecoderLayer(nn.Module):
         # self.layer_type = layer_type
         self.layer_idx = extract_layer_index(prefix)
 
-        self.attn_norm = RMSNorm(config.hidden_size, eps=config.norm_eps)
+        self.attn_norm = (RMSNorm if config.fuse_norm else nn.RMSNorm)(config.hidden_size, eps=config.norm_eps)
+        # RMSNorm(config.hidden_size, eps=config.norm_eps)
         
         if config.attn is not None and self.layer_idx in config.attn['layers']:
             if self.layer_idx in config.attn['full_layers']:
@@ -188,7 +191,7 @@ class SseSwaMobaDecoderLayer(nn.Module):
             else:
                 raise ValueError(f"Unsupported linear_attn_type: {config.linear_attn_type}")
         
-        self.mlp_norm = RMSNorm(config.hidden_size, eps=config.norm_eps)
+        self.mlp_norm = (RMSNorm if config.fuse_norm else nn.RMSNorm)(config.hidden_size, eps=config.norm_eps)# RMSNorm(config.hidden_size, eps=config.norm_eps)
         self.mlp = SseSwaMobaMLP(
             hidden_size=config.hidden_size,
             hidden_ratio=config.hidden_ratio,
@@ -217,7 +220,12 @@ class SseSwaMobaDecoderLayer(nn.Module):
         )
         # hidden_states = attention_output
         # chk(self.prefix + ".attn_out", hidden_states)
-        hidden_states, residual = self.mlp_norm(attention_output, residual)
+        if self.config.fuse_norm:
+            hidden_states, residual = self.mlp_norm(attention_output, residual, True)
+        else:
+            hidden_states = residual + attention_output
+            residual = hidden_states
+            hidden_states = self.mlp_norm(hidden_states)
         hidden_states = self.mlp(hidden_states, **kwargs)
         hidden_states = hidden_states + residual
         return hidden_states, residual
@@ -274,7 +282,7 @@ class SseSwaMobaModel(nn.Module):
     
     def forward(
         self,
-        input_ids: torch.Tensor,
+        input_ids: torch.Tensor | None,
         positions: torch.Tensor,
         intermediate_tensors: IntermediateTensors | None = None,
         inputs_embeds: torch.Tensor | None = None,
@@ -313,14 +321,6 @@ class SseSwaMobaForCausalLM(
     SupportsPP,
     IsHybrid,
 ):
-    packed_modules_mapping = {
-        "qkv_proj": [
-            "q_proj",
-            "k_proj",
-            "v_proj",
-        ],
-        "gate_up_proj": ["gate_proj", "up_proj"],
-    }
 
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         config = vllm_config.model_config.hf_config
