@@ -27,8 +27,8 @@ from vllm.model_executor.layers.linear import (
     QKVParallelLinear,
     MergedColumnParallelLinear,
 )
-# from vllm.model_executor.layers.layernorm import RMSNorm
-from fla.modules import RMSNorm
+# from fla.modules import RMSNorm
+from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.attention.backends.registry import AttentionBackendEnum
 from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
 from vllm.model_executor.layers.batch_invariant import vllm_is_batch_invariant
@@ -395,6 +395,7 @@ class MoBA_Attention(nn.Module):
         qk_norm: bool = False,
         window_size: int | None = None,
         rope_theta: float | None = 10000.,
+        rope_scaling: float | None = None,
         is_moba: bool = False,
         moba_chunk_size: int = 1024,
         moba_topk: int = 4,
@@ -471,14 +472,18 @@ class MoBA_Attention(nn.Module):
         #     is_neox_style=True,
         #     dtype=torch.float32,
         # )
+        rope_parameters = dict()
+        rope_parameters['rope_theta'] = rope_theta
+        if rope_scaling is not None:
+            rope_parameters['factor'] = rope_scaling
         self.rotary = get_rope(
             self.head_dim,
             max_position=self.max_position_embeddings,
-            rope_parameters={"rope_theta": rope_theta},
+            rope_parameters=rope_parameters,
             dtype=torch.float32,
             dual_chunk_attention_config=None,
         )
-        self.attn = Attention(
+        self.attn = MixtureOfBlocksAttention(
             num_heads=self.tp_heads,
             head_size=self.head_dim,
             scale=self.scaling,
@@ -486,19 +491,10 @@ class MoBA_Attention(nn.Module):
             cache_config=self.cache_config,
             quant_config=self.quant_config,
             prefix=f"{prefix}.attn",
+            is_moba=is_moba,
+            moba_topk=self.moba_topk,
+            moba_chunk_size=self.moba_chunk_size,
         )
-        # self.attn = MixtureOfBlocksAttention(
-            # num_heads=self.tp_heads,
-            # head_size=self.head_dim,
-            # scale=self.scaling,
-            # num_kv_heads=self.tp_kv_heads,
-            # cache_config=self.cache_config,
-            # quant_config=self.quant_config,
-            # prefix=f"{prefix}.attn",
-            # is_moba=is_moba,
-            # moba_topk=self.moba_topk,
-            # moba_chunk_size=self.moba_chunk_size,
-        # )
 
     def forward(
         self,
@@ -509,7 +505,7 @@ class MoBA_Attention(nn.Module):
         
         qkv, _ = self.qkv_proj(hidden_states)
         q, k, v = qkv.split([self.q_dim, self.kv_dim, self.kv_dim], dim=-1)
-        chk("q", q, self.prefix, show=True)
+        # chk("q", q, self.prefix, show=True)
         if self.qk_norm:
             q = self.q_norm(q.view(-1, self.tp_heads, self.head_dim)).view(
                 -1, self.q_dim
@@ -517,15 +513,15 @@ class MoBA_Attention(nn.Module):
             k = self.k_norm(k.view(-1, self.tp_kv_heads, self.head_dim)).view(
                 -1, self.kv_dim
             )
-        chk("q_normed", q, self.prefix, show=True)
+        # chk("q_normed", q, self.prefix, show=True)
         q, k = self.rotary(positions, q, k)
         o = self.attn(
             query=q, key=k, value=v, 
         )
-        chk("moba_q", q, self.prefix, show=True)
-        chk("moba_k", k, self.prefix, show=True)
-        chk("moba_v", v, self.prefix, show=True)
-        chk("moba_o", o, self.prefix, show=True)
+        # chk("moba_q", q, self.prefix, show=True)
+        # chk("moba_k", k, self.prefix, show=True)
+        # chk("moba_v", v, self.prefix, show=True)
+        # chk("moba_o", o, self.prefix, show=True)
         output[:], _ = self.o_proj(o)
         chk("moba_output", output, self.prefix, show=True)
 

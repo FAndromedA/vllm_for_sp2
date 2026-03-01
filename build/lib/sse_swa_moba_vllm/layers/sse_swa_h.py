@@ -40,15 +40,18 @@ import math
 from fla.layers.utils import get_unpad_data, index_first_axis, pad_input
 # from fla.modules import RMSNorm, ShortConvolution
 from fla.ops.gla import chunk_gla, fused_recurrent_gla
+from fla.ops.gated_delta_rule import chunk_gated_delta_rule as fla_chunk_gated_delta_rule
 from vllm.model_executor.layers.fla.ops import chunk_gated_delta_rule, fused_recurrent_gated_delta_rule
 from fla.ops.sse import prepare_sample_relpos_global_index_flat, softmax_and_mask
 from .ops.fused_recurrent import sse_fused_recurrent_gated_delta_rule
 
 from vllm.attention.layer import Attention
 from vllm.v1.attention.backends.flash_attn import FlashAttentionBackend
+# from fla.modules import FusedRMSNormGated, RMSNorm
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.fla.ops.kda import FusedRMSNormGated
 from vllm.model_executor.layers.rotary_embedding.base import RotaryEmbedding
+from vllm.model_executor.layers.rotary_embedding import get_rope
 
 logger = init_logger(__name__)
 
@@ -173,7 +176,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
         if self.model_config is None or self.cache_config is None:
             raise ValueError("ModelConfig and CacheConfig must be set.")
         return SSE_GDN_H.SSE_GDN_H_state_dtype(
-            self.model_config.dtype, self.cache_config.mamba_cache_dtype
+            self.model_config.dtype, self.cache_config.mamba_cache_dtype, self.cache_config.mamba_ssm_cache_dtype,
         )
 
     def get_state_shape(
@@ -198,9 +201,13 @@ class SSE_GDN_H(nn.Module, MambaBase):
         cls,
         model_dtype: ModelDType | torch.dtype,
         mamba_cache_dtype: MambaDType,
+        mamba_ssm_cache_dtype: MambaDType = "auto",
     ):
         state_dtype = get_kv_cache_torch_dtype(mamba_cache_dtype, model_dtype)
-        return (state_dtype, state_dtype, state_dtype)
+        ssm_dtype = torch.float32 if mamba_ssm_cache_dtype == "auto" \
+            else get_kv_cache_torch_dtype(mamba_ssm_cache_dtype, model_dtype)
+        # logger.info(f"SSE_SWA {state_dtype=}, {ssm_dtype=}")
+        return (state_dtype, state_dtype, ssm_dtype)
 
     @classmethod
     def SSE_GDN_H_state_shape(
@@ -290,7 +297,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
         sse_implementation: str = "varlen",
         sse_qk_relu: bool = False,
         use_q_softmax: bool = False,
-        use_k_softmax: bool = True,
+        use_k_softmax: bool = False, # but gla True
         emulq: bool = True,
         emulk: bool = True,
         qkv_bias: bool = False,
@@ -425,8 +432,8 @@ class SSE_GDN_H(nn.Module, MambaBase):
             # quant_config=quant_config,
             prefix=f"{prefix}.sse_b_proj",
         )
-        self.A_log = nn.Parameter(torch.empty(self.sse_tp_kv_heads * 2))
-        self.dt_bias = nn.Parameter(torch.empty(self.sse_tp_kv_heads * 2))
+        self.A_log = nn.Parameter(torch.empty(self.sse_tp_kv_heads * 2, dtype=torch.float32))
+        self.dt_bias = nn.Parameter(torch.empty(self.sse_tp_kv_heads * 2, dtype=torch.float32))
         self.A_log._no_weight_decay = True
         self.dt_bias._no_weight_decay = True
         # 只加载当前 rank 负责的 head 部分
@@ -501,11 +508,6 @@ class SSE_GDN_H(nn.Module, MambaBase):
         sse_q2 = sse_q1 + self.lora_q_proj_B(self.lora_q_proj_A(hidden_states)[0])[0] # [0] because Linear returns output and bias
         sse_k2 = sse_k1 + self.lora_k_proj_B(self.lora_k_proj_A(hidden_states)[0])[0]
         sse_v, _ = self.sse_v_proj(hidden_states)
-        # chk("sse_q1", sse_q1, self.prefix, show=True)
-        # chk("sse_q2", sse_q2, self.prefix, show=True)
-        # chk("sse_k1", sse_k1, self.prefix, show=True)
-        # chk("sse_k2", sse_k2, self.prefix, show=True)
-        # chk("sse_v1", sse_v, self.prefix, show=True)
         sse_a, _ = self.sse_a_proj(hidden_states)
         sse_b, _ = self.sse_b_proj(hidden_states) # [num_tokens, 2 * sse_tp_kv_heads]
         g, beta = fused_gdn_gating(self.A_log, sse_a, sse_b, self.dt_bias)
@@ -513,9 +515,16 @@ class SSE_GDN_H(nn.Module, MambaBase):
             beta = beta * 2.        
         b1, b2 = torch.chunk(beta, 2, dim=-1) # [1, num_tokens, 2 * HV] -> [1, num_tokens, HV]
         g1, g2 = torch.chunk(g, 2, dim=-1)
-        
-        # print(f"{hidden_states.shape=}, first 10 hidden states: {hidden_states[:10]}")
         eta = self.sse_e_proj(hidden_states)[0] # [num_tokens, num_sparse_partition]
+        # chk("sse_q1", sse_q1, self.prefix, show=True)
+        # chk("sse_q2", sse_q2, self.prefix, show=True)
+        # chk("sse_k1", sse_k1, self.prefix, show=True)
+        # chk("sse_k2", sse_k2, self.prefix, show=True)
+        # chk("sse_v", sse_v, self.prefix, show=True)
+        # chk("sse_beta", beta, self.prefix, show=True)
+        # chk("sse_g", g, self.prefix, show=True)
+        # print(f"{hidden_states.shape=}, first 10 hidden states: {hidden_states[:10]}")
+        # chk("eta", eta, self.prefix, show=True)
 
         core_attn_out = torch.zeros(
             (1, num_tokens, self.sse_tp_kv_heads, self.sse_head_v_dim),
@@ -571,8 +580,8 @@ class SSE_GDN_H(nn.Module, MambaBase):
         q1, k1 = q1[:num_actual_tokens], k1[:num_actual_tokens]
         q2, k2 = q2[:num_actual_tokens], k2[:num_actual_tokens]
         v = v[:num_actual_tokens]
-        g1, g2 = g1[:num_actual_tokens], g2[:num_actual_tokens]
-        b1, b2 = b1[:num_actual_tokens], b2[:num_actual_tokens]
+        g1, g2 = g1[:, :num_actual_tokens], g2[:, :num_actual_tokens]
+        b1, b2 = b1[:, :num_actual_tokens], b2[:, :num_actual_tokens]
         eta = eta[:num_actual_tokens]
 
         (conv_state_q, conv_state_k, recurrent_state) = constant_caches
@@ -685,6 +694,13 @@ class SSE_GDN_H(nn.Module, MambaBase):
         offsets = torch.cat([cu_seqlens.to(offsets), offsets[1:] + cu_seqlens[-1]])
         new_cu_seqlens = offsets
 
+        # chk("sse_q", q, self.prefix, show=True)
+        # chk("sse_k", k, self.prefix, show=True)
+        # chk("sse_v", v, self.prefix, show=True)
+        # chk("sse_b", b, self.prefix, show=True)
+        # chk("sse_g", g, self.prefix, show=True)
+        # print(f"{offsets=}, {state_sizes=}, {global_sorted=}")
+
         assert active_seq_slots.numel() == new_cu_seqlens.numel() - 1
         # print(f"active_seq_slots: {active_seq_slots}, active_partition_ids: {active_partition_ids}, new_cu_seqlens: {new_cu_seqlens}")
 
@@ -693,7 +709,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
                 # zero_idx 表示没有初始 state 的那些序列在 non_spec_state_indices_tensor 中的位置
                 zero_idx = non_spec_state_indices_tensor[~has_initial_state]
                 recurrent_state[zero_idx] = 0
-                print(f"{has_initial_state=}, {zero_idx=}, {active_seq_slots=}")
+                # print(f"{has_initial_state=}, {zero_idx=}, {active_seq_slots=}")
                 # print("initial_state shape:", recurrent_state.shape) # torch.Size([3062, 5, 8, 128, 128])
             initial_state = recurrent_state[active_seq_slots, active_partition_ids].contiguous()
             (
@@ -712,36 +728,28 @@ class SSE_GDN_H(nn.Module, MambaBase):
                 head_first = False,
                 use_qk_l2norm_in_kernel = True,
             )
+            o, recurrent_state_rec = fla_chunk_gated_delta_rule(
+                q=q,
+                k=k,
+                v=v,
+                g=g,
+                beta=b,
+                initial_state=initial_state,
+                output_final_state=True,
+                cu_seqlens=offsets,
+                use_qk_l2norm_in_kernel=True,
+            )
+            # chk("fla_o", o, self.prefix, show=True)
+            # chk("fla_recurrent_state_rec", recurrent_state_rec, self.prefix, show=True)
             recurrent_state[active_seq_slots, active_partition_ids] = last_recurrent_state.to(
                 dtype=recurrent_state.dtype,
-                device=recurrent_state.device,
             )
             # assert torch.allclose(recurrent_state[active_seq_slots, active_partition_ids], last_recurrent_state.to(
             #     dtype=recurrent_state.dtype,
             #     device=recurrent_state.device,
             # ))
         elif attn_metadata.num_decodes > 0:
-            # initial_state = recurrent_state[active_seq_slots, active_partition_ids].contiguous()
-            # (
-            #     core_attn_out_non_spec,
-            #     last_recurrent_state,
-            # ) = chunk_gated_delta_rule(
-            #     q = q,
-            #     k = k,
-            #     v = v,
-            #     g = g,
-            #     beta = b,
-            #     scale = None,
-            #     initial_state = initial_state,
-            #     output_final_state = True,
-            #     cu_seqlens = new_cu_seqlens,
-            #     head_first = False,
-            #     use_qk_l2norm_in_kernel = True,
-            # )
-            # recurrent_state[active_seq_slots, active_partition_ids] = last_recurrent_state.to(
-            #     dtype=recurrent_state.dtype,
-            #     device=recurrent_state.device,
-            # )
+            
             # TODO: 需要修改 gdn 内核, 使得能够直接读取和写入指定位置的 state
             (
                 core_attn_out_non_spec,
@@ -776,17 +784,17 @@ class SSE_GDN_H(nn.Module, MambaBase):
         else:
             core_attn_out_non_spec, last_recurrent_state = None, None
         
-        # chk("q", q, prefix=self.prefix, show=True)
-        # chk("k", k, prefix=self.prefix, show=True)
-        # chk("v", v, prefix=self.prefix, show=True)
-        # chk("g", g, prefix=self.prefix, show=True)
-        # chk("b", b, prefix=self.prefix, show=True)
+        # if last_recurrent_state is not None and core_attn_out_non_spec is not None:
+        #     chk("last_recurrent_state", last_recurrent_state, prefix=self.prefix, show=True)
         
-        # chk("last_recurrent_state", last_recurrent_state, prefix=self.prefix, show=True)
-        chk("core_attn_out_non_spec", core_attn_out_non_spec, self.prefix, show=True)
         o1, o2 = core_attn_out_non_spec[:, :cu_seqlens[-1]], core_attn_out_non_spec[:, cu_seqlens[-1]:]
+        # chk("o1", o1, self.prefix, show=True)
+        # chk("o2", o2, self.prefix, show=True)
+        
         o2_reduce = torch.zeros_like(o1)
         o2_reduce.index_add_(dim=1, index=global_sorted, source=o2) # 把 o2 按照 global index 汇总到对应位置
+        # chk("o2_reduce", o2_reduce, self.prefix, show=True)
+
         core_attn_out[0, :num_actual_tokens] = o1 + o2_reduce
         # |=====| end of sse_gdn_attention_varlen |=====|
 
@@ -807,6 +815,7 @@ class SlidingWindowAttention(nn.Module):
         swa_dropout: float = 0.5,
         window_size: int | None = None,
         rope_theta: float | None = 10000.,
+        rope_scaling: float | None = None,
         max_position_embeddings: int | None = None,
         rms_norm_eps: float = 1e-5,
         prefix: str = "",
@@ -839,6 +848,7 @@ class SlidingWindowAttention(nn.Module):
         self.q_size = self.num_heads * self.head_dim # only this tp slice
         self.kv_size = self.num_kv_heads * self.head_dim
 
+        self.scaling = self.head_dim**(-0.5)
         self.swa_dropout = swa_dropout
         self.window_size = window_size
         self.rope_theta = rope_theta
@@ -859,19 +869,30 @@ class SlidingWindowAttention(nn.Module):
             self.swa_q_norm = RMSNorm(self.head_dim, eps=rms_norm_eps)
             self.swa_k_norm = RMSNorm(self.head_dim, eps=rms_norm_eps)
 
-        self.rotary = RotaryEmbedding(
-            head_size=self.head_dim,
-            rotary_dim=self.head_dim,
-            max_position_embeddings=self.max_position_embeddings,
-            base=self.rope_theta,
-            is_neox_style=True,
+        # self.rotary = RotaryEmbedding(
+        #     head_size=self.head_dim,
+        #     rotary_dim=self.head_dim,
+        #     max_position_embeddings=self.max_position_embeddings,
+        #     base=self.rope_theta,
+        #     is_neox_style=True,
+        #     dtype=torch.float32,
+        # )
+        rope_parameters = dict()
+        rope_parameters['rope_theta'] = rope_theta
+        if rope_scaling is not None:
+            rope_parameters['factor'] = rope_scaling
+        self.rotary = get_rope(
+            self.head_dim,
+            max_position=self.max_position_embeddings,
+            rope_parameters=rope_parameters,
             dtype=torch.float32,
+            dual_chunk_attention_config=None,
         )
 
         self.swa_attn = Attention(
             num_heads=self.num_heads,
             head_size=self.head_dim,
-            scale=1.0,
+            scale=self.scaling,
             num_kv_heads=self.num_kv_heads,
             cache_config=cache_config,
             quant_config=quant_config,
@@ -937,7 +958,7 @@ class SSE_SWA_Hybrid(nn.Module):
         sse_implementation: str = "varlen",
         sse_qk_relu: bool = False,
         use_q_softmax: bool = False,
-        use_k_softmax: bool = True,
+        use_k_softmax: bool = False,
         emulq: bool = True,
         emulk: bool = True,
         qkv_bias: bool = False,
@@ -947,6 +968,7 @@ class SSE_SWA_Hybrid(nn.Module):
         swa_dropout: float = 0.5,
         window_size: int | None = None,
         rope_theta: float | None = 10000.,
+        rope_scaling: float | None = None,
         max_position_embeddings: int | None = None,
         # ===================
         rms_norm_eps: float = 1e-5,
@@ -998,6 +1020,7 @@ class SSE_SWA_Hybrid(nn.Module):
             swa_dropout=swa_dropout,
             window_size=window_size,
             rope_theta=rope_theta,
+            rope_scaling=rope_scaling,
             max_position_embeddings=max_position_embeddings,
             rms_norm_eps=rms_norm_eps,
             prefix=f"{prefix}.swa_attn",
@@ -1017,7 +1040,7 @@ class SSE_SWA_Hybrid(nn.Module):
         self.sse_attn(hidden_states, positions, sse_o)
         self.sliding_window_attn(hidden_states, positions, swa_o)
         chk("sse_o", sse_o, prefix=self.prefix, show=True)
-        # chk("swa_o", swa_o, show=True)
+        # chk("swa_o", swa_o, prefix=self.prefix, show=True)
         output[:] = (self.sse_merge_norm(sse_o) + self.swa_merge_norm(swa_o)) / 2
-        # chk("sse_swa_o", output, show=True)
+        chk("sse_swa_o", output, prefix=self.prefix, show=True)
         

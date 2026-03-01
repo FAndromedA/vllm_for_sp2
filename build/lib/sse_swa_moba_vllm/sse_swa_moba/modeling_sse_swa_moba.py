@@ -32,8 +32,8 @@ from vllm.logger import init_logger
 
 from vllm.model_executor.layers.fused_moe import SharedFusedMoE
 from vllm.model_executor.layers.fused_moe.config import RoutingMethodType
-# from vllm.model_executor.layers.layernorm import RMSNorm
-from fla.modules import RMSNorm
+from vllm.model_executor.layers.layernorm import RMSNorm
+# from fla.modules import RMSNorm
 from vllm.model_executor.layers.linear import (
     ColumnParallelLinear,
     QKVParallelLinear,
@@ -128,6 +128,7 @@ class SseSwaMobaDecoderLayer(nn.Module):
                     qk_norm=config.attn['qk_norm'],
                     window_size=None, 
                     rope_theta=config.attn['rope_theta'],
+                    rope_scaling=config.rope_scaling,
                     is_moba=False,
                     max_position_embeddings=config.max_position_embeddings,
                     layer_idx=self.layer_idx,
@@ -148,6 +149,7 @@ class SseSwaMobaDecoderLayer(nn.Module):
                     qk_norm=config.attn['qk_norm'],
                     window_size=config.attn['window_size'],
                     rope_theta=config.attn['rope_theta'],
+                    rope_scaling=config.rope_scaling,
                     is_moba=True,
                     moba_chunk_size=config.attn['moba_chunk_size'],
                     moba_topk=config.attn['moba_topk'],
@@ -182,6 +184,7 @@ class SseSwaMobaDecoderLayer(nn.Module):
                     swa_dropout=config.swa_dropout,
                     window_size=config.attn['window_size'],
                     rope_theta=config.attn['rope_theta'],
+                    rope_scaling=config.rope_scaling,
                     max_position_embeddings=config.max_position_embeddings,
                     norm_eps=config.norm_eps,
                     prefix=f"{prefix}.attn",
@@ -221,7 +224,7 @@ class SseSwaMobaDecoderLayer(nn.Module):
         # hidden_states = attention_output
         # chk(self.prefix + ".attn_out", hidden_states)
         if self.config.fuse_norm:
-            hidden_states, residual = self.mlp_norm(attention_output, residual, True)
+            hidden_states, residual = self.mlp_norm(attention_output, residual)
         else:
             hidden_states = residual + attention_output
             residual = hidden_states

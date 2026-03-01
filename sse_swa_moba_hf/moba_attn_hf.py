@@ -30,6 +30,22 @@ except ImportError:
 
 logger = logging.get_logger(__name__)
 
+def chk(name, x, prefix="", show=False):
+    if x is None: return
+    if prefix != "":
+        name = prefix + "." + name
+    if not torch.isfinite(x).all():
+        bad = (~torch.isfinite(x)).sum().item()
+        max = torch.abs(x).max().item()
+        min = torch.abs(x).min().item()
+        print(f"[BAD] {name}: nonfinite={bad}, dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
+        # 可选：直接 raise 让你看 traceback
+        raise RuntimeError(f"nonfinite in {name}")
+    if show:
+        max = torch.abs(x).max().item()
+        min = torch.abs(x).min().item()
+        print(f"[GOOD] {name}: dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
+
 
 class MoBAAttention(nn.Module):
 
@@ -106,10 +122,10 @@ class MoBAAttention(nn.Module):
         q = rearrange(self.q_proj(hidden_states), '... (h d) -> ... h d', d=self.head_dim)
         k = rearrange(self.k_proj(hidden_states), '... (h d) -> ... h d', d=self.head_dim)
         v = rearrange(self.v_proj(hidden_states), '... (h d) -> ... h d', d=self.head_dim)
-
+        # chk("q", q, show=True)
         if self.qk_norm:
             q, k = self.q_norm(q), self.k_norm(k)
-
+        # chk("q_norm", q, show=True)
         # equivalent to cu_seqlens in `flash_attn`
         cu_seqlens = kwargs.get('cu_seqlens')
 
@@ -126,7 +142,9 @@ class MoBAAttention(nn.Module):
         if self.max_position_embeddings is not None:
             max_seqlen = max(max_seqlen, self.max_position_embeddings)
         q, k = self.rotary(q, k, seqlen_offset=seqlen_offset, max_seqlen=max_seqlen, cu_seqlens=cu_seqlens)
-
+        # chk("moba_q", q, f"{self.layer_idx}.attn", show=True)
+        # chk("moba_k", k, f"{self.layer_idx}.attn", show=True)
+        # chk("moba_v", v, f"{self.layer_idx}.attn", show=True)
         if past_key_values is not None:
             cache_has_content = past_key_values.get_seq_length(self.layer_idx) > 0
             k_cached, v_cached = past_key_values.update(
@@ -225,8 +243,9 @@ class MoBAAttention(nn.Module):
                 )
 
         o = o.reshape(batch_size, q_len, -1)
+        # chk("moba_o", o, f"{self.layer_idx}.attn", show=True)
         o = self.o_proj(o)
-
+        chk("moba_output", o, f"{self.layer_idx}.attn", show=True)
         if not output_attentions:
             attentions = None
 

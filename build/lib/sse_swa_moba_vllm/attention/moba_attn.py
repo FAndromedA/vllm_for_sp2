@@ -182,7 +182,7 @@ class SseMobaFlashAttentionImpl(FlashAttentionImpl):
         output_scale: torch.Tensor | None = None,
         output_block_scale: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        print(f"Running SseMobaFlashAttentionImpl forward with is_moba={self.is_moba}, type of attn_metadata: {type(attn_metadata)}")
+        # print(f"Running SseMobaFlashAttentionImpl forward with is_moba={self.is_moba}, type of attn_metadata: {type(attn_metadata)}")
         
         assert output is not None, "Output tensor must be provided."
         if attn_metadata is None:

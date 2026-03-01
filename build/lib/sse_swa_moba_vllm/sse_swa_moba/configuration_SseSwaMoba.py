@@ -23,6 +23,7 @@ class SseSwaMobaConfig(PretrainedConfig):
             num_sparse_partition: int = 4,
             num_writer: int = 2,
             num_reader: int = 2,
+            rope_scaling: float | None = None,
             linear_attn_type: str = "gdn",
             sse_implementation: str = "varlen",
             sse_qk_relu: bool = False,
@@ -78,6 +79,7 @@ class SseSwaMobaConfig(PretrainedConfig):
         self.num_sparse_partition = num_sparse_partition
         self.num_writer = num_writer
         self.num_reader = num_reader
+        self.rope_scaling = rope_scaling
         self.linear_attn_type = linear_attn_type
         self.sse_implementation = sse_implementation
         self.sse_qk_relu = sse_qk_relu
