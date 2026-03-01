@@ -1039,8 +1039,8 @@ class SSE_SWA_Hybrid(nn.Module):
         swa_o = torch.empty_like(output)
         self.sse_attn(hidden_states, positions, sse_o)
         self.sliding_window_attn(hidden_states, positions, swa_o)
-        chk("sse_o", sse_o, prefix=self.prefix, show=True)
+        # chk("sse_o", sse_o, prefix=self.prefix, show=True)
         # chk("swa_o", swa_o, prefix=self.prefix, show=True)
         output[:] = (self.sse_merge_norm(sse_o) + self.swa_merge_norm(swa_o)) / 2
-        chk("sse_swa_o", output, prefix=self.prefix, show=True)
+        # chk("sse_swa_o", output, prefix=self.prefix, show=True)
         

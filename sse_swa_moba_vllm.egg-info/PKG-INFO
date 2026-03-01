@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sse_swa_moba_vllm
-Version: 0.1.dev5+g2bf05d47e.d20260228
+Version: 0.1.dev6+g84b7f2ef0.d20260301
 Summary: sse_swa_moba_vllm description
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown

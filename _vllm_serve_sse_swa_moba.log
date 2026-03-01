@@ -1,6 +1,0 @@
-nohup: ignoring input
-WARNING 03-01 04:30:48 [vllm.py:1403] Current vLLM config is not set.
-INFO 03-01 04:30:48 [scheduler.py:230] Chunked prefill is enabled with max_num_batched_tokens=2048.
-[0;36m(APIServer pid=228620)[0;0m INFO 03-01 04:30:48 [api_server.py:1351] vLLM API server version 0.13.0
-[0;36m(APIServer pid=228620)[0;0m INFO 03-01 04:30:48 [utils.py:253] non-default args: {'model_tag': '/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling', 'port': 8711, 'model': '/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling', 'trust_remote_code': True, 'dtype': 'bfloat16', 'max_model_len': 65536, 'enforce_eager': True, 'served_model_name': ['SSE_SWA_MOBA'], 'pipeline_parallel_size': 2, 'tensor_parallel_size': 4, 'block_size': 128, 'gpu_memory_utilization': 0.65}
-[0;36m(APIServer pid=228620)[0;0m The argument `trust_remote_code` is to be used with Auto classes. It has no effect here and is ignored.

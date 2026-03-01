@@ -919,11 +919,11 @@ class SSEGDNH(nn.Module):
 
         q, k, g, b, v = [torch.cat(pair, dim=1) for pair in zip((q1, k1, g1, b1, v1), (q2, k2, g2, b2, v2))]
         offsets = torch.cat([cu_seqlens.to(offsets), offsets[1:] + cu_seqlens[-1]])
-        chk("sse_q", q, f"{self.layer_idx}.sse_kernel", show=True)
-        chk("sse_k", k, f"{self.layer_idx}.sse_kernel", show=True)
-        chk("sse_v", v, f"{self.layer_idx}.sse_kernel", show=True)
-        chk("sse_b", b, f"{self.layer_idx}.sse_kernel", show=True)
-        chk("sse_g", g, f"{self.layer_idx}.sse_kernel", show=True)
+        # chk("sse_q", q, f"{self.layer_idx}.sse_kernel", show=True)
+        # chk("sse_k", k, f"{self.layer_idx}.sse_kernel", show=True)
+        # chk("sse_v", v, f"{self.layer_idx}.sse_kernel", show=True)
+        # chk("sse_b", b, f"{self.layer_idx}.sse_kernel", show=True)
+        # chk("sse_g", g, f"{self.layer_idx}.sse_kernel", show=True)
         print(f"{offsets=}, {state_sizes=}, {global_sorted=}")
         recurrent_state_rec = None
         if use_cache:
@@ -958,7 +958,7 @@ class SSEGDNH(nn.Module):
             raise NotImplementedError(f"Not supported mode `{mode}`.")
 
         if recurrent_state_rec is not None:
-            chk("last_recurrent_state", recurrent_state_rec, f"{self.layer_idx}.sse_attn", show=True)
+            # chk("last_recurrent_state", recurrent_state_rec, f"{self.layer_idx}.sse_attn", show=True)
             recurrent_state1 = recurrent_state_rec[:S]
             recurrent_state2[state_id] = recurrent_state_rec[S:]
             recurrent_state = torch.cat((recurrent_state1, recurrent_state2), dim=0)
@@ -967,12 +967,12 @@ class SSEGDNH(nn.Module):
 
 
         o1, o2 = o[:, :cu_seqlens[-1]], o[:, cu_seqlens[-1]:]
-        chk("o1", o1, f"{self.layer_idx}.sse_attn", show=True)
-        chk("o2", o2, f"{self.layer_idx}.sse_attn", show=True)
+        # chk("o1", o1, f"{self.layer_idx}.sse_attn", show=True)
+        # chk("o2", o2, f"{self.layer_idx}.sse_attn", show=True)
 
         o2_reduce = torch.zeros_like(o1)
         o2_reduce.index_add_(dim=1, index=global_sorted, source=o2)
-        chk("o2_reduce", o2_reduce, f"{self.layer_idx}.sse_attn", show=True)
+        # chk("o2_reduce", o2_reduce, f"{self.layer_idx}.sse_attn", show=True)
 
         o = o1 + o2_reduce
         if bsz > 1:
@@ -1126,14 +1126,14 @@ class SSEGDNH(nn.Module):
         
         eta = self.sse_e_proj(hidden_states)
 
-        chk("sse_q1", q1, f"{self.layer_idx}.sse_attn", show=True)
-        chk("sse_q2", q2, f"{self.layer_idx}.sse_attn", show=True)
-        chk("sse_k1", k1, f"{self.layer_idx}.sse_attn", show=True)
-        chk("sse_k2", k2, f"{self.layer_idx}.sse_attn", show=True)
-        chk("sse_v", v, f"{self.layer_idx}.sse_attn", show=True)
-        chk("sse_beta", b, f"{self.layer_idx}.sse_attn", show=True)
-        chk("sse_g", g, f"{self.layer_idx}.sse_attn", show=True)
-        chk("sse_eta", eta, f"{self.layer_idx}.sse_attn", show=True)
+        # chk("sse_q1", q1, f"{self.layer_idx}.sse_attn", show=True)
+        # chk("sse_q2", q2, f"{self.layer_idx}.sse_attn", show=True)
+        # chk("sse_k1", k1, f"{self.layer_idx}.sse_attn", show=True)
+        # chk("sse_k2", k2, f"{self.layer_idx}.sse_attn", show=True)
+        # chk("sse_v", v, f"{self.layer_idx}.sse_attn", show=True)
+        # chk("sse_beta", b, f"{self.layer_idx}.sse_attn", show=True)
+        # chk("sse_g", g, f"{self.layer_idx}.sse_attn", show=True)
+        # chk("sse_eta", eta, f"{self.layer_idx}.sse_attn", show=True)
 
         if self.use_short_conv:
             conv_state_q, conv_state_k = None, None
@@ -1252,8 +1252,8 @@ class SSEGDNH(nn.Module):
         )
         swa_o = swa_o.reshape(batch_size, q_len, -1)
         swa_o = self.swa_o_proj(swa_o)
-        chk("sse_o", sse_o, f"{self.layer_idx}.attn", show=True)
-        chk("swa_o", swa_o, f"{self.layer_idx}.attn", show=True)
+        # chk("sse_o", sse_o, f"{self.layer_idx}.attn", show=True)
+        # chk("swa_o", swa_o, f"{self.layer_idx}.attn", show=True)
         o = (self.sse_merge_norm(sse_o) + self.swa_merge_norm(swa_o)) / 2
-        chk("sse_swa_o", o, f"{self.layer_idx}.attn", show=True)
+        # chk("sse_swa_o", o, f"{self.layer_idx}.attn", show=True)
         return o, (None, aux_loss), past_key_values

@@ -523,6 +523,6 @@ class MoBA_Attention(nn.Module):
         # chk("moba_v", v, self.prefix, show=True)
         # chk("moba_o", o, self.prefix, show=True)
         output[:], _ = self.o_proj(o)
-        chk("moba_output", output, self.prefix, show=True)
+        # chk("moba_output", output, self.prefix, show=True)
 
         
