@@ -1,10 +1,12 @@
-from transformers.configuration_utils import PretrainedConfig, layer_type_validation
-from transformers.utils import logging
+from transformers.configuration_utils import PretrainedConfig
 
-logger = logging.get_logger(__name__)
+from vllm.logger import init_logger
+logger = init_logger(__name__)
+
 
 class SseSwaMobaConfig(PretrainedConfig):
 
+    _supports_flash_attn=True
     model_type = "sse_swa_moba"
     keys_to_ignore_at_inference = ["past_key_values"]
 
@@ -66,6 +68,8 @@ class SseSwaMobaConfig(PretrainedConfig):
     ):
         # vllm must have
         self.num_attention_heads = num_heads
+        if attn is not None:
+            self.num_key_value_heads = attn['num_kv_heads']
 
         self.attn_mode = attn_mode
         self.hidden_size = hidden_size

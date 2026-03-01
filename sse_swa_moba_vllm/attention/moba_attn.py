@@ -79,7 +79,7 @@ def chk(name, x, prefix="", show=False):
         min = torch.abs(x).min().item()
         print(f"[GOOD] {name}: dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
 
-@register_backend(AttentionBackendEnum.FLASH_ATTN)
+# @register_backend(AttentionBackendEnum.FLASH_ATTN)
 class MobaSseFlashAttentionBackend(FlashAttentionBackend):
 
     # @staticmethod
