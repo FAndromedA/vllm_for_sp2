@@ -8,10 +8,10 @@ import vllm.envs as envs
 from vllm.config.vllm import VllmConfig
 from vllm.config import CacheConfig, ModelConfig, get_current_vllm_config
 from vllm.forward_context import ForwardContext, get_forward_context
-from vllm.attention.backends.abstract import AttentionMetadata
+# from vllm.attention.backends.abstract import AttentionMetadata
 from vllm.model_executor.layers.quantization import QuantizationConfig
 from vllm.model_executor.layers.quantization.input_quant_fp8 import QuantFP8
-from vllm.model_executor.layers.quantization.kv_cache import BaseKVCacheMethod
+# from vllm.model_executor.layers.quantization.kv_cache import BaseKVCacheMethod
 from vllm.model_executor.layers.quantization.utils.quant_utils import GroupShape
 from vllm.model_executor.models.vision import get_vit_attn_backend
 
@@ -32,14 +32,14 @@ from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.attention.backends.registry import AttentionBackendEnum
 from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
 from vllm.model_executor.layers.batch_invariant import vllm_is_batch_invariant
-from vllm.model_executor.layers.rotary_embedding.base import RotaryEmbedding
+# from vllm.model_executor.layers.rotary_embedding.base import RotaryEmbedding
 from vllm.model_executor.layers.rotary_embedding import get_rope
 
-from vllm.attention.layers.mm_encoder_attention import maybe_get_vit_flash_attn_backend
+# from vllm.attention.layers.mm_encoder_attention import maybe_get_vit_flash_attn_backend
 from vllm.attention.selector import get_attn_backend
-from vllm.attention.utils.fa_utils import get_flash_attn_version
+# from vllm.attention.utils.fa_utils import get_flash_attn_version
 from vllm.attention.utils.kv_sharing_utils import validate_kv_sharing_target
-from vllm.attention.utils.kv_transfer_utils import maybe_transfer_kv_layer
+# from vllm.attention.utils.kv_transfer_utils import maybe_transfer_kv_layer
 
 from vllm.platforms import current_platform
 from vllm.attention.backends.abstract import (

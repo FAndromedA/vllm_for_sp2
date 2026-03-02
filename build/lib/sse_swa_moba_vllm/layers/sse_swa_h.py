@@ -50,7 +50,7 @@ from vllm.attention.layer import Attention
 # from fla.modules import FusedRMSNormGated, RMSNorm
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.fla.ops.kda import FusedRMSNormGated
-from vllm.model_executor.layers.rotary_embedding.base import RotaryEmbedding
+# from vllm.model_executor.layers.rotary_embedding.base import RotaryEmbedding
 from vllm.model_executor.layers.rotary_embedding import get_rope
 
 logger = init_logger(__name__)
