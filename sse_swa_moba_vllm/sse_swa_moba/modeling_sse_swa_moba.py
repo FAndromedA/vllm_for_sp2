@@ -7,8 +7,8 @@ from torch import nn
 from einops import rearrange
 from transformers.activations import ACT2FN
 
-from vllm.attention.backends.abstract import AttentionMetadata
-from vllm.attention.layer import Attention
+# from vllm.attention.backends.abstract import AttentionMetadata
+# from vllm.attention.layer import Attention
 from vllm.compilation.decorators import support_torch_compile
 from vllm.config import (
     CacheConfig,
@@ -26,23 +26,15 @@ from vllm.distributed import (
     tensor_model_parallel_all_gather,
 )
 
-from vllm.forward_context import ForwardContext, get_forward_context
+# from vllm.forward_context import ForwardContext, get_forward_context
 
 from vllm.logger import init_logger
 
-from vllm.model_executor.layers.fused_moe import SharedFusedMoE
-from vllm.model_executor.layers.fused_moe.config import RoutingMethodType
+# from vllm.model_executor.layers.fused_moe import SharedFusedMoE
+# from vllm.model_executor.layers.fused_moe.config import RoutingMethodType
 from vllm.model_executor.layers.layernorm import RMSNorm
 # from fla.modules import RMSNorm
-from vllm.model_executor.layers.linear import (
-    ColumnParallelLinear,
-    QKVParallelLinear,
-    ReplicatedLinear,
-    RowParallelLinear,
-    MergedColumnParallelLinear
-)
 from vllm.model_executor.layers.logits_processor import LogitsProcessor
-from vllm.model_executor.layers.quantization import QuantizationConfig
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     ParallelLMHead,
     VocabParallelEmbedding,
@@ -51,15 +43,11 @@ from vllm.model_executor.model_loader.weight_utils import (
     default_weight_loader,
     sharded_weight_loader,
 )
-from vllm.model_executor.utils import set_weight_attrs
-from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors
 
 from vllm.model_executor.models.interfaces import (
     HasInnerState,
     IsHybrid,
-    MixtureOfExperts,
-    SupportsLoRA,
     SupportsPP,
 )
 from vllm.model_executor.models.utils import (
@@ -77,8 +65,6 @@ logger = init_logger(__name__)
 KVCache = tuple[torch.Tensor, torch.Tensor]
 
 from ..layers.mlp import SseSwaMobaMLP
-from ..layers.sse import SSE_GDN
-# from ..layers.sse_swa import SSE_GDN_H
 from ..layers.sse_swa_h import SSE_SWA_Hybrid, SSE_GDN_H
 from ..layers.moba import MoBA_Attention
 from .configuration_SseSwaMoba import SseSwaMobaConfig

@@ -19,7 +19,6 @@ from vllm.attention.backends.abstract import (
     MultipleOf,
     is_quantized_kv_cache,
 )
-from vllm.attention.layer import Attention
 from vllm.attention.ops.common import cp_lse_ag_out_rs
 from vllm.attention.ops.merge_attn_states import merge_attn_states
 from vllm.attention.utils.fa_utils import (
@@ -35,9 +34,6 @@ if is_flash_attn_varlen_func_available():
         get_scheduler_metadata,
         reshape_and_cache_flash,
     )
-from vllm.config import VllmConfig, get_current_vllm_config, get_layers_from_vllm_config
-from vllm.config.cache import CacheDType
-from vllm.distributed.parallel_state import get_dcp_group
 from vllm.logger import init_logger
 from vllm.model_executor.layers.batch_invariant import (
     vllm_is_batch_invariant,
@@ -61,8 +57,6 @@ from vllm.v1.attention.backends.flash_attn import (
     FlashAttentionMetadataBuilder,
 )
 
-from vllm.attention.backends.registry import AttentionBackendEnum, register_backend
-
 def chk(name, x, prefix="", show=False):
     if x is None: return
     if prefix != "":
@@ -79,6 +73,7 @@ def chk(name, x, prefix="", show=False):
         min = torch.abs(x).min().item()
         print(f"[GOOD] {name}: dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
 
+# from vllm.attention.backends.registry import AttentionBackendEnum, register_backend
 # @register_backend(AttentionBackendEnum.FLASH_ATTN)
 class MobaSseFlashAttentionBackend(FlashAttentionBackend):
 

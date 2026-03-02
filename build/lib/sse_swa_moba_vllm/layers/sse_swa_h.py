@@ -30,23 +30,23 @@ from vllm.model_executor.layers.linear import (
     MergedColumnParallelLinear,
 )
 from vllm.model_executor.layers.mamba.abstract import MambaBase
-from vllm.model_executor.layers.mamba.mamba_utils import MambaStateDtypeCalculator, MambaStateShapeCalculator
+# from vllm.model_executor.layers.mamba.mamba_utils import MambaStateDtypeCalculator, MambaStateShapeCalculator
 from vllm.model_executor.layers.mamba.ops.causal_conv1d import causal_conv1d_fn, causal_conv1d_update
 from vllm.model_executor.layers.quantization.base_config import QuantizationConfig
 from vllm.model_executor.models.qwen3_next import fused_gdn_gating
 from vllm.model_executor.model_loader.weight_utils import LoaderFunction
 
 import math
-from fla.layers.utils import get_unpad_data, index_first_axis, pad_input
+# from fla.layers.utils import get_unpad_data, index_first_axis, pad_input
 # from fla.modules import RMSNorm, ShortConvolution
-from fla.ops.gla import chunk_gla, fused_recurrent_gla
+# from fla.ops.gla import chunk_gla, fused_recurrent_gla
 from fla.ops.gated_delta_rule import chunk_gated_delta_rule as fla_chunk_gated_delta_rule
 from vllm.model_executor.layers.fla.ops import chunk_gated_delta_rule, fused_recurrent_gated_delta_rule
 from fla.ops.sse import prepare_sample_relpos_global_index_flat, softmax_and_mask
 from .ops.fused_recurrent import sse_fused_recurrent_gated_delta_rule
 
 from vllm.attention.layer import Attention
-from vllm.v1.attention.backends.flash_attn import FlashAttentionBackend
+# from vllm.v1.attention.backends.flash_attn import FlashAttentionBackend
 # from fla.modules import FusedRMSNormGated, RMSNorm
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.fla.ops.kda import FusedRMSNormGated

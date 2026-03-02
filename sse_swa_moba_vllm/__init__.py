@@ -4,7 +4,9 @@ def register_model():
 
     from .sse_swa_moba import register_model
     register_model()
+    print("vllm plugin register model successfully.")
     register_attention_backends()
+    print("vllm plugin register attn_backend successfully.")
 
 
 def register_attention_backends():
