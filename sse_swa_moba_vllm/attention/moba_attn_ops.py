@@ -313,8 +313,7 @@ def moba_attn_varlen(
     # we will adjust selective topk to moba_topk - 1, as the last chunk is always chosen
     moba_topk = min(moba_topk - 1, num_filtered_chunk)
     need_moba_attn = moba_topk > 0
-    print(f"moba attn: num_chunk={cu_chunk.shape[0]-1}, num_filtered_chunk={num_filtered_chunk}, moba_topk={moba_topk}, need_moba_attn={need_moba_attn}")
-
+    
     # corner case: if no moba attn needed, just return self attn
     if not need_moba_attn:
         return flash_attn_varlen_func(

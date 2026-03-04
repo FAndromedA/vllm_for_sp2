@@ -242,7 +242,6 @@ class SseMobaFlashAttentionImpl(FlashAttentionImpl):
                 kv_groups = q_p.shape[1] // k_p.shape[1]
                 k_p = torch.repeat_interleave(k_p, kv_groups, dim=1)
                 v_p = torch.repeat_interleave(v_p, kv_groups, dim=1)
-                # print(f"{self.is_moba=}, {self.moba_topk=}, {self.moba_chunk_size=}")
                 # print(f"{kv_groups=}, q_p shape: {q_p.shape}, k_p shape: {k_p.shape}, v_p shape: {v_p.shape}, cu_base: {cu_base}, cu_seqlens_q_p: {cu_seqlens_q_p}")
                 out_prefill = moba_attn_varlen(
                     q=q_p,
@@ -263,7 +262,7 @@ class SseMobaFlashAttentionImpl(FlashAttentionImpl):
                 scheduler_metadata = attn_metadata.scheduler_metadata
 
                 descale_shape = (cu_seqlens_q.shape[0] - 1, self.num_kv_heads)
-
+                # print(f"{num_decodes=}, {num_decode_tokens=}, {num_prefills=}, {num_prefill_tokens=};\n Shape of query[:num_decode_tokens]: {query[:num_decode_tokens].shape}, block_table shape: {block_table.shape}, cu_seqlens_q[:num_decodes + 1] shape: {cu_seqlens_q[:num_decodes + 1].shape}, seqused_k[:num_decode_tokens] shape: {seqused_k[:num_decode_tokens].shape}")
                 flash_attn_varlen_func(
                     q=query[:num_decode_tokens],
                     k=key_cache,
@@ -277,7 +276,7 @@ class SseMobaFlashAttentionImpl(FlashAttentionImpl):
                     causal=attn_metadata.causal,
                     alibi_slopes=self.alibi_slopes,
                     window_size=self.sliding_window,
-                    block_table=block_table,
+                    block_table=block_table[:num_decodes],
                     softcap=self.logits_soft_cap,
                     scheduler_metadata=scheduler_metadata,
                     fa_version=self.vllm_flash_attn_version,
