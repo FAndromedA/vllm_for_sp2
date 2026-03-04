@@ -74,7 +74,7 @@ def chk(name, x, prefix=""):
     if not torch.isfinite(x).all():
         bad = (~torch.isfinite(x)).sum().item()
         print(f"[BAD] {name}: nonfinite={bad}, dtype={x.dtype}, shape={tuple(x.shape)}")
-        # 可选：直接 raise 让你看 traceback
+    
         raise RuntimeError(f"nonfinite in {name}")
 
 class SseSwaMobaDecoderLayer(nn.Module):
@@ -481,7 +481,7 @@ class SseSwaMobaForCausalLM(
                 continue
 
             if name not in params_dict:
-                logger.warning(f"跳过未在 vLLM 模型结构中找到的权重: {name}")
+                # logger.warning(f"跳过未在 vLLM 模型结构中找到的权重: {name}")
                 continue
 
             param = params_dict[name]

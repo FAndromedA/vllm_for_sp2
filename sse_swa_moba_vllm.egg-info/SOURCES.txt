@@ -5,6 +5,7 @@ hf_glah_weights.pth
 notes.md
 print_weights.py
 pyproject.toml
+requirements.txt
 test_attn.py
 test_moba.py
 test_model.py

@@ -86,7 +86,7 @@ class MixedAttention(torch.autograd.Function):
         ctx.softmax_scale = softmax_scale = q.shape[-1] ** (-0.5)
 
         # self attn
-        _, _, _, _, self_attn_out_sh, self_attn_lse_hs, _, _ = (
+        self_attn_out_sh, self_attn_lse_hs, _, _ = (
             _flash_attn_varlen_forward(
                 q=q,
                 k=k,
@@ -102,7 +102,7 @@ class MixedAttention(torch.autograd.Function):
         )
 
         # moba attn
-        _, _, _, _, moba_attn_out, moba_attn_lse_hs, _, _ = _flash_attn_varlen_forward(
+        moba_attn_out, moba_attn_lse_hs, _, _ = _flash_attn_varlen_forward(
             q=moba_q,
             k=moba_kv[:, 0],
             v=moba_kv[:, 1],
@@ -165,106 +165,106 @@ class MixedAttention(torch.autograd.Function):
         output_2d.index_add_(0, moba_q_sh_indices, raw_attn_out)
         output = output.to(q.dtype)
         # add back max lse
-        mixed_attn_lse_sh = mixed_attn_lse_sh + max_lse_1d.view_as(mixed_attn_se_sh)
-        ctx.save_for_backward(
-            output,
-            mixed_attn_lse_sh,
-            q,
-            k,
-            v,
-            self_attn_cu_seqlen,
-            moba_q,
-            moba_kv,
-            moba_cu_seqlen_q,
-            moba_cu_seqlen_kv,
-            moba_q_sh_indices,
-        )
+        # mixed_attn_lse_sh = mixed_attn_lse_sh + max_lse_1d.view_as(mixed_attn_se_sh)
+        # ctx.save_for_backward(
+        #     output,
+        #     mixed_attn_lse_sh,
+        #     q,
+        #     k,
+        #     v,
+        #     self_attn_cu_seqlen,
+        #     moba_q,
+        #     moba_kv,
+        #     moba_cu_seqlen_q,
+        #     moba_cu_seqlen_kv,
+        #     moba_q_sh_indices,
+        # )
 
         return output
 
-    @staticmethod
-    def backward(ctx, d_output):
+    # @staticmethod
+    # def backward(ctx, d_output):
 
-        max_seqlen = ctx.max_seqlen
-        moba_chunk_size = ctx.moba_chunk_size
-        softmax_scale = ctx.softmax_scale
+    #     max_seqlen = ctx.max_seqlen
+    #     moba_chunk_size = ctx.moba_chunk_size
+    #     softmax_scale = ctx.softmax_scale
 
-        (
-            output,
-            mixed_attn_vlse_sh,
-            q,
-            k,
-            v,
-            self_attn_cu_seqlen,
-            moba_q,
-            moba_kv,
-            moba_cu_seqlen_q,
-            moba_cu_seqlen_kv,
-            moba_q_sh_indices,
-        ) = ctx.saved_tensors
+    #     (
+    #         output,
+    #         mixed_attn_vlse_sh,
+    #         q,
+    #         k,
+    #         v,
+    #         self_attn_cu_seqlen,
+    #         moba_q,
+    #         moba_kv,
+    #         moba_cu_seqlen_q,
+    #         moba_cu_seqlen_kv,
+    #         moba_q_sh_indices,
+    #     ) = ctx.saved_tensors
 
-        d_output = d_output.contiguous()
+    #     d_output = d_output.contiguous()
 
-        dq, dk, dv, _ = _flash_attn_varlen_backward(
-            dout=d_output,
-            q=q,
-            k=k,
-            v=v,
-            out=output,
-            softmax_lse=mixed_attn_vlse_sh.t().contiguous(),
-            dq=None,
-            dk=None,
-            dv=None,
-            cu_seqlens_q=self_attn_cu_seqlen,
-            cu_seqlens_k=self_attn_cu_seqlen,
-            max_seqlen_q=max_seqlen,
-            max_seqlen_k=max_seqlen,
-            softmax_scale=softmax_scale,
-            causal=True,
-            dropout_p=0.0,
-            window_size=(-1, -1),
-            softcap=0.0,
-            alibi_slopes=None,
-            deterministic=True,
-        )
+    #     dq, dk, dv, _ = _flash_attn_varlen_backward(
+    #         dout=d_output,
+    #         q=q,
+    #         k=k,
+    #         v=v,
+    #         out=output,
+    #         softmax_lse=mixed_attn_vlse_sh.t().contiguous(),
+    #         dq=None,
+    #         dk=None,
+    #         dv=None,
+    #         cu_seqlens_q=self_attn_cu_seqlen,
+    #         cu_seqlens_k=self_attn_cu_seqlen,
+    #         max_seqlen_q=max_seqlen,
+    #         max_seqlen_k=max_seqlen,
+    #         softmax_scale=softmax_scale,
+    #         causal=True,
+    #         dropout_p=0.0,
+    #         window_size=(-1, -1),
+    #         softcap=0.0,
+    #         alibi_slopes=None,
+    #         deterministic=True,
+    #     )
 
-        headdim = q.shape[-1]
-        d_moba_output = (
-            d_output.view(-1, headdim).index_select(0, moba_q_sh_indices).unsqueeze(1)
-        )
-        moba_output = (
-            output.view(-1, headdim).index_select(0, moba_q_sh_indices).unsqueeze(1)
-        )
+    #     headdim = q.shape[-1]
+    #     d_moba_output = (
+    #         d_output.view(-1, headdim).index_select(0, moba_q_sh_indices).unsqueeze(1)
+    #     )
+    #     moba_output = (
+    #         output.view(-1, headdim).index_select(0, moba_q_sh_indices).unsqueeze(1)
+    #     )
 
-        mixed_attn_vlse = (
-            mixed_attn_vlse_sh.view(-1).index_select(0, moba_q_sh_indices).view(1, -1)
-        )
+    #     mixed_attn_vlse = (
+    #         mixed_attn_vlse_sh.view(-1).index_select(0, moba_q_sh_indices).view(1, -1)
+    #     )
 
-        dmq, dmk, dmv, _ = _flash_attn_varlen_backward(
-            dout=d_moba_output,
-            q=moba_q,
-            k=moba_kv[:, 0],
-            v=moba_kv[:, 1],
-            out=moba_output,
-            softmax_lse=mixed_attn_vlse,
-            dq=None,
-            dk=None,
-            dv=None,
-            cu_seqlens_q=moba_cu_seqlen_q,
-            cu_seqlens_k=moba_cu_seqlen_kv,
-            max_seqlen_q=max_seqlen,
-            max_seqlen_k=moba_chunk_size,
-            softmax_scale=softmax_scale,
-            causal=False,
-            dropout_p=0.0,
-            window_size=(-1, -1),
-            softcap=0.0,
-            alibi_slopes=None,
-            deterministic=True,
-        )
+    #     dmq, dmk, dmv, _ = _flash_attn_varlen_backward(
+    #         dout=d_moba_output,
+    #         q=moba_q,
+    #         k=moba_kv[:, 0],
+    #         v=moba_kv[:, 1],
+    #         out=moba_output,
+    #         softmax_lse=mixed_attn_vlse,
+    #         dq=None,
+    #         dk=None,
+    #         dv=None,
+    #         cu_seqlens_q=moba_cu_seqlen_q,
+    #         cu_seqlens_k=moba_cu_seqlen_kv,
+    #         max_seqlen_q=max_seqlen,
+    #         max_seqlen_k=moba_chunk_size,
+    #         softmax_scale=softmax_scale,
+    #         causal=False,
+    #         dropout_p=0.0,
+    #         window_size=(-1, -1),
+    #         softcap=0.0,
+    #         alibi_slopes=None,
+    #         deterministic=True,
+    #     )
 
-        dmkv = torch.stack((dmk, dmv), dim=1)
-        return dq, dk, dv, None, dmq, dmkv, None, None, None, None, None
+    #     dmkv = torch.stack((dmk, dmv), dim=1)
+    #     return dq, dk, dv, None, dmq, dmkv, None, None, None, None, None
 
 
 def moba_attn_varlen(
@@ -313,6 +313,7 @@ def moba_attn_varlen(
     # we will adjust selective topk to moba_topk - 1, as the last chunk is always chosen
     moba_topk = min(moba_topk - 1, num_filtered_chunk)
     need_moba_attn = moba_topk > 0
+    print(f"moba attn: num_chunk={cu_chunk.shape[0]-1}, num_filtered_chunk={num_filtered_chunk}, moba_topk={moba_topk}, need_moba_attn={need_moba_attn}")
 
     # corner case: if no moba attn needed, just return self attn
     if not need_moba_attn:

@@ -42,11 +42,10 @@ import math
 # from fla.ops.gla import chunk_gla, fused_recurrent_gla
 from fla.ops.gated_delta_rule import chunk_gated_delta_rule as fla_chunk_gated_delta_rule
 from vllm.model_executor.layers.fla.ops import chunk_gated_delta_rule, fused_recurrent_gated_delta_rule
-from fla.ops.sse import prepare_sample_relpos_global_index_flat, softmax_and_mask
+from fla.ops.sse import prepare_sample_relpos_global_index_flat
 from .ops.fused_recurrent import sse_fused_recurrent_gated_delta_rule
 
 from vllm.attention.layer import Attention
-# from vllm.v1.attention.backends.flash_attn import FlashAttentionBackend
 # from fla.modules import FusedRMSNormGated, RMSNorm
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.fla.ops.kda import FusedRMSNormGated
@@ -64,14 +63,16 @@ def chk(name, x, prefix="", show=False):
         max = torch.abs(x).max().item()
         min = torch.abs(x).min().item()
         print(f"[BAD] {name}: nonfinite={bad}, dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
-        # 可选：直接 raise 让你看 traceback
+        
         raise RuntimeError(f"nonfinite in {name}")
     if show:
         max = torch.abs(x).max().item()
         min = torch.abs(x).min().item()
         print(f"[GOOD] {name}: dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
 
-def sort_along_l(q, k, v, gk, beta, e, cu_seqlens, K, emulq, emulk):
+
+def sort_along_l(q, k, v, gk, beta, e, cu_seqlens, K, emulq, emulk, 
+                    sample_idx_flat, relpos_flat, global_idx_flat, lengths):
     _, L, H, D = q.shape
     N = e.size(-1)
     S = len(cu_seqlens) - 1
@@ -84,7 +85,8 @@ def sort_along_l(q, k, v, gk, beta, e, cu_seqlens, K, emulq, emulk):
     experts_flat = topk_expert.reshape(L * K)  # [L*K] 选择的专家
     values_flat  = topk_value.reshape(L * K)   # [L*K] 专家的分数
 
-    sample_idx_flat, relpos_flat, global_idx_flat, lengths = prepare_sample_relpos_global_index_flat(cu_seqlens, K)  # ([L*K] * 3, S)
+    # 因为 prepare_sample_relpos_global_index_flat 内部调用了 repeat_interleave 导致 cuda graph capture 失败，所以改成外部调用一次，传入结果
+    # sample_idx_flat, relpos_flat, global_idx_flat, lengths = prepare_sample_relpos_global_index_flat(cu_seqlens, K)  # ([L*K] * 3, S)
     # 分别表示每个 (token, expert) 对所属的样本 ID；且是从 [L] 复制成 [L, K] -> [L * K]
     # 每个 (token, expert) 对在样本内的相对位置；
     # 每个 (token, expert) 对对应的原始 token 全局索引
@@ -136,7 +138,9 @@ def sse_swa_gdn_h_func(
     g1: torch.Tensor, g2: torch.Tensor, 
     b1: torch.Tensor, b2: torch.Tensor,
     eta: torch.Tensor, core_attn_out: torch.Tensor,
-    layer_name: str,
+    sample_idx_flat: torch.Tensor, relpos_flat: torch.Tensor, 
+    global_idx_flat: torch.Tensor, lengths: torch.Tensor,
+    layer_name: str
 ) -> None:
     forward_context: ForwardContext = get_forward_context()
     # print("no_compile_layers keys:", list(forward_context.no_compile_layers.keys())[:50])
@@ -144,7 +148,8 @@ def sse_swa_gdn_h_func(
     self = forward_context.no_compile_layers[layer_name]
     self._forward(
         q1, k1, q2, k2, v, 
-        g1, g2, b1, b2, eta, core_attn_out
+        g1, g2, b1, b2, eta, core_attn_out,
+        sample_idx_flat, relpos_flat, global_idx_flat, lengths
     )
 
 def sse_swa_gdn_h_func_fake(
@@ -153,6 +158,8 @@ def sse_swa_gdn_h_func_fake(
     g1: torch.Tensor, g2: torch.Tensor, 
     b1: torch.Tensor, b2: torch.Tensor,
     eta: torch.Tensor, core_attn_out: torch.Tensor,
+    sample_idx_flat: torch.Tensor, relpos_flat: torch.Tensor, 
+    global_idx_flat: torch.Tensor, lengths: torch.Tensor,
     layer_name: str,
 ) -> None:
     return
@@ -501,8 +508,25 @@ class SSE_GDN_H(nn.Module, MambaBase):
         positions: torch.Tensor,
         output: torch.Tensor,
     ) -> None:
+        
         # hidden_state [num_tokens, hidden_size]
         num_tokens = hidden_states.size(0)
+
+        forward_context = get_forward_context()
+        attn_metadata: AttentionMetadata = forward_context.attn_metadata
+        if attn_metadata is not None:
+            assert isinstance(attn_metadata, dict)
+            attn_metadata = attn_metadata[self.prefix]
+            assert isinstance(attn_metadata, GDNAttentionMetadata)
+
+            sample_idx_flat, relpos_flat, global_idx_flat, lengths = \
+                prepare_sample_relpos_global_index_flat(attn_metadata.non_spec_query_start_loc, self.num_writer)
+        else: # V1 profile run, no attn_metadata
+            sample_idx_flat = torch.empty(num_tokens * self.num_writer, dtype=torch.long, device=hidden_states.device)
+            relpos_flat = torch.empty(num_tokens * self.num_writer, dtype=torch.long, device=hidden_states.device)
+            global_idx_flat = torch.empty(num_tokens * self.num_writer, dtype=torch.long, device=hidden_states.device)
+            lengths = torch.empty(num_tokens * self.num_writer, dtype=torch.long, device=hidden_states.device)
+        
         sse_q1, _ = self.sse_q_proj(hidden_states)
         sse_k1, _ = self.sse_k_proj(hidden_states)
         sse_q2 = sse_q1 + self.lora_q_proj_B(self.lora_q_proj_A(hidden_states)[0])[0] # [0] because Linear returns output and bias
@@ -534,7 +558,10 @@ class SSE_GDN_H(nn.Module, MambaBase):
         torch.ops.vllm.sse_swa_gdn_h_func(
             sse_q1, sse_k1, sse_q2, sse_k2, sse_v, 
             g1, g2, b1, b2,
-            eta, core_attn_out, self.prefix
+            eta, core_attn_out,
+            sample_idx_flat, relpos_flat, 
+            global_idx_flat, lengths,
+            self.prefix
         )
 
         if self.use_output_gate:
@@ -556,6 +583,8 @@ class SSE_GDN_H(nn.Module, MambaBase):
         g1: torch.Tensor, g2: torch.Tensor,
         b1: torch.Tensor, b2: torch.Tensor,
         eta: torch.Tensor, core_attn_out: torch.Tensor,
+        sample_idx_flat: torch.Tensor, relpos_flat: torch.Tensor, 
+        global_idx_flat: torch.Tensor, lengths: torch.Tensor,
     ) -> None:
         # see https://github.com/vllm-project/vllm/blob/main/vllm/v1/attention/backend.py#L284 for AttentionMetadata definition
         forward_context = get_forward_context()
@@ -565,8 +594,6 @@ class SSE_GDN_H(nn.Module, MambaBase):
             # V1 profile run
             return
         
-        # TODO: replace AttentionMetadata with custom class (GDNAttentionMetadata)
-        # assert isinstance(attn_metadata, AttentionMetadata)
         assert isinstance(attn_metadata, dict)
         attn_metadata = attn_metadata[self.prefix]
         assert isinstance(attn_metadata, GDNAttentionMetadata)
@@ -675,7 +702,8 @@ class SSE_GDN_H(nn.Module, MambaBase):
         cu_seqlens = non_spec_query_start_loc
         S = len(cu_seqlens) - 1
         q2, k2, v2, g2, b2, eta, mask, offsets, state_sizes, global_sorted = sort_along_l(
-            q2, k2, v2, g2, b2, eta, cu_seqlens, self.num_writer, self.emulq, self.emulk
+            q2, k2, v2, g2, b2, eta, cu_seqlens, self.num_writer, self.emulq, self.emulk,
+            sample_idx_flat, relpos_flat, global_idx_flat, lengths
         )
         active_mask = state_sizes > 0 # [S, N], 有效的 (seq, partition) 对
         active_seq_ids2, active_partition_ids2 = torch.nonzero(active_mask, as_tuple=True)
@@ -727,17 +755,6 @@ class SSE_GDN_H(nn.Module, MambaBase):
                 cu_seqlens = new_cu_seqlens,
                 head_first = False,
                 use_qk_l2norm_in_kernel = True,
-            )
-            o, recurrent_state_rec = fla_chunk_gated_delta_rule(
-                q=q,
-                k=k,
-                v=v,
-                g=g,
-                beta=b,
-                initial_state=initial_state,
-                output_final_state=True,
-                cu_seqlens=offsets,
-                use_qk_l2norm_in_kernel=True,
             )
             # chk("fla_o", o, self.prefix, show=True)
             # chk("fla_recurrent_state_rec", recurrent_state_rec, self.prefix, show=True)

@@ -7,45 +7,30 @@
 # 当且仅当 is_moba = True 的时候才跑自己的 forward
 
 from dataclasses import dataclass
-from typing import ClassVar
 
-import numpy as np
 import torch
 
 from vllm.attention.backends.abstract import (
     AttentionBackend,
     AttentionImpl,
     AttentionType,
-    MultipleOf,
-    is_quantized_kv_cache,
 )
-from vllm.attention.ops.common import cp_lse_ag_out_rs
-from vllm.attention.ops.merge_attn_states import merge_attn_states
 from vllm.attention.utils.fa_utils import (
-    flash_attn_supports_fp8,
-    get_flash_attn_version,
     is_flash_attn_varlen_func_available,
 )
 
 if is_flash_attn_varlen_func_available():
     from vllm.attention.utils.fa_utils import (
-        flash_attn_supports_sinks,
         flash_attn_varlen_func,
-        get_scheduler_metadata,
         reshape_and_cache_flash,
     )
 from vllm.logger import init_logger
-from vllm.model_executor.layers.batch_invariant import (
-    vllm_is_batch_invariant,
-)
-from vllm.platforms.interface import DeviceCapability
-from vllm.utils.math_utils import cdiv
+
 from vllm.v1.attention.backends.utils import (
     AttentionMetadataBuilder,
     CommonAttentionMetadata,
     split_decodes_and_prefills,
 )
-# from vllm.v1.kv_cache_interface import AttentionSpec, MambaSpec
 
 logger = init_logger(__name__)
 
@@ -66,7 +51,7 @@ def chk(name, x, prefix="", show=False):
         max = torch.abs(x).max().item()
         min = torch.abs(x).min().item()
         print(f"[BAD] {name}: nonfinite={bad}, dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
-        # 可选：直接 raise 让你看 traceback
+        
         raise RuntimeError(f"nonfinite in {name}")
     if show:
         max = torch.abs(x).max().item()
@@ -89,12 +74,14 @@ class MobaSseFlashAttentionBackend(FlashAttentionBackend):
     def get_builder_cls() -> type["SseMobaFlashAttentionMetadataBuilder"]:
         return SseMobaFlashAttentionMetadataBuilder
 
+
 class SseMobaFlashAttentionMetadata(FlashAttentionMetadata):
     # For handling prefill decode split
     num_decodes: int
     num_decode_tokens: int
     num_prefills: int
     num_prefill_tokens: int
+
 
 class SseMobaFlashAttentionMetadataBuilder(FlashAttentionMetadataBuilder, AttentionMetadataBuilder[SseMobaFlashAttentionMetadata]):
     
@@ -127,6 +114,7 @@ class SseMobaFlashAttentionMetadataBuilder(FlashAttentionMetadataBuilder, Attent
         metadata.num_prefills = num_prefills
         metadata.num_prefill_tokens = num_prefill_tokens
         # print(f"Built SseMobaFlashAttentionMetadata: num_decodes={num_decodes}, num_decode_tokens={num_decode_tokens}, num_prefills={num_prefills}, num_prefill_tokens={num_prefill_tokens}")
+
         return metadata
     
 class SseMobaFlashAttentionImpl(FlashAttentionImpl):
@@ -164,7 +152,7 @@ class SseMobaFlashAttentionImpl(FlashAttentionImpl):
         self.is_moba = is_moba
         self.moba_topk = moba_topk
         self.moba_chunk_size = moba_chunk_size
-
+        
     def forward(
         self,
         layer: torch.nn.Module,
@@ -178,7 +166,6 @@ class SseMobaFlashAttentionImpl(FlashAttentionImpl):
         output_block_scale: torch.Tensor | None = None,
     ) -> torch.Tensor:
         # print(f"Running SseMobaFlashAttentionImpl forward with is_moba={self.is_moba}, type of attn_metadata: {type(attn_metadata)}")
-        
         assert output is not None, "Output tensor must be provided."
         if attn_metadata is None:
             # Profiling run.
@@ -202,7 +189,7 @@ class SseMobaFlashAttentionImpl(FlashAttentionImpl):
             num_decode_tokens = attn_metadata.num_decode_tokens
             num_prefills = attn_metadata.num_prefills
             num_prefill_tokens = attn_metadata.num_prefill_tokens
-            # print(f"MoBA Attention forward: num_decodes={num_decodes}, num_decode_tokens={num_decode_tokens}, num_prefills={num_prefills}, num_prefill_tokens={num_prefill_tokens}")
+            
             cu_seqlens_q = attn_metadata.query_start_loc
             max_seqlen_q = attn_metadata.max_query_len
             
@@ -255,6 +242,7 @@ class SseMobaFlashAttentionImpl(FlashAttentionImpl):
                 kv_groups = q_p.shape[1] // k_p.shape[1]
                 k_p = torch.repeat_interleave(k_p, kv_groups, dim=1)
                 v_p = torch.repeat_interleave(v_p, kv_groups, dim=1)
+                # print(f"{self.is_moba=}, {self.moba_topk=}, {self.moba_chunk_size=}")
                 # print(f"{kv_groups=}, q_p shape: {q_p.shape}, k_p shape: {k_p.shape}, v_p shape: {v_p.shape}, cu_base: {cu_base}, cu_seqlens_q_p: {cu_seqlens_q_p}")
                 out_prefill = moba_attn_varlen(
                     q=q_p,
@@ -262,7 +250,7 @@ class SseMobaFlashAttentionImpl(FlashAttentionImpl):
                     v=v_p,
                     cu_seqlens=cu_seqlens_q_p,
                     max_seqlen=max_seqlen_q, # because decodes max is 1, so prefill max is same as query max
-                    moba_chunk_size=self.moba_chunk_size, # TODO: add to config
+                    moba_chunk_size=self.moba_chunk_size,
                     moba_topk=self.moba_topk,
                 )
                 # chk("out_prefill", out_prefill)
@@ -299,6 +287,6 @@ class SseMobaFlashAttentionImpl(FlashAttentionImpl):
                     num_splits=attn_metadata.max_num_splits,
                     s_aux=self.sinks,
                 )
-                chk("out_decode", output[:num_decode_tokens], show=True)
+                # chk("out_decode", output[:num_decode_tokens], show=True)
             return output
 

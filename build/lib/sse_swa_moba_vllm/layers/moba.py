@@ -72,7 +72,7 @@ def chk(name, x, prefix="", show=False):
         max = torch.abs(x).max().item()
         min = torch.abs(x).min().item()
         print(f"[BAD] {name}: nonfinite={bad}, dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
-        # 可选：直接 raise 让你看 traceback
+        
         raise RuntimeError(f"nonfinite in {name}")
     if show:
         max = torch.abs(x).max().item()
@@ -218,7 +218,7 @@ class MixtureOfBlocksAttention(nn.Module, AttentionLayerBase):
         self.backend = AttentionBackendEnum.__members__.get(backend_name)
         self.dtype = dtype
 
-        # print(f"backend_name: {backend_name}, impl_cls: {impl_cls}, backend_enum: {self.backend}")
+        # print(f"backend_name: {backend_name}, impl_cls: {impl_cls}, backend_enum: {self.backend}, is_moba: {is_moba}, moba_topk: {moba_topk}, moba_chunk_size: {moba_chunk_size}")
 
         # For cuda-alike (CUDA and ROCM) and cpu platforms, we control how
         # torch.compile works by registering the attention as one giant
