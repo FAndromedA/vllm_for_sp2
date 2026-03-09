@@ -429,14 +429,14 @@ class SseSwaMobaForCausalLM(
             "attn.sse_e_proj": "attn.sse_attn.sse_e_proj",
             "attn.sse_o_norm": "attn.sse_attn.sse_o_norm",
             "attn.sse_o_proj": "attn.sse_attn.sse_o_proj",
-            # if use_output_gate is True:
-            "attn.sse_g_prog.0": "attn.sse_attn.sse_g_proj_A",
-            "attn.sse_g_prog.1": "attn.sse_attn.sse_g_proj_B",
+            # if use_output_gate is True :
+            "attn.sse_g_proj.0": "attn.sse_attn.sse_g_proj_A",
+            "attn.sse_g_proj.1": "attn.sse_attn.sse_g_proj_B",
             
-            # === SlidingWindowAttention (swa_attn) 内部模块 ===
-            "attn.swa_o_proj": "attn.sliding_window_attn.swa_o_proj",
-            "attn.swa_q_norm": "attn.sliding_window_attn.swa_q_norm",
-            "attn.swa_k_norm": "attn.sliding_window_attn.swa_k_norm",
+            # === SlidingWindowAttention 内部模块 ===
+            "attn.swa_o_proj": "attn.swa_attn.swa_o_proj",
+            "attn.swa_q_norm": "attn.swa_attn.swa_q_norm",
+            "attn.swa_k_norm": "attn.swa_attn.swa_k_norm",
             
             # 注：sse_merge_norm 和 swa_merge_norm 直接在 SSE_SWA_Hybrid 中，路径无需映射
         }
@@ -448,12 +448,12 @@ class SseSwaMobaForCausalLM(
             ("attn.qkv_proj", "attn.k_proj", "k"),
             ("attn.qkv_proj", "attn.v_proj", "v"),
 
-            # SWA Attention QKV 合并
-            ("attn.sliding_window_attn.swa_qkv_proj", "attn.swa_q_proj", "q"),
-            ("attn.sliding_window_attn.swa_qkv_proj", "attn.swa_k_proj", "k"),
-            ("attn.sliding_window_attn.swa_qkv_proj", "attn.swa_v_proj", "v"),
+            # SWA Attention QKV 合并 
+            ("attn.swa_attn.swa_qkv_proj", "attn.swa_q_proj", "q"),
+            ("attn.swa_attn.swa_qkv_proj", "attn.swa_k_proj", "k"),
+            ("attn.swa_attn.swa_qkv_proj", "attn.swa_v_proj", "v"),
             
-            # MLP Gate/Up 合并 (假设你在 vLLM 中使用了 MergedColumnParallelLinear)
+            # MLP Gate/Up 合并 
             ("mlp.gate_up_proj", "mlp.gate_proj", 0),
             ("mlp.gate_up_proj", "mlp.up_proj", 1),
         ]

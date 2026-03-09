@@ -62,7 +62,8 @@ def chat():
             # "What is the best thing to do in San Francisco? The best thing to do in San Francisco is eat a sandwich and sit in Dolores Park on a sunny day.\nQuestion: What is the best thing to do in San Francisco?",
             # "Explain java fx basic concepts",
             # "Question: Janet’s ducks lay 16 eggs per day. She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market?"
-            "你好，请介绍一下你自己。"
+            # "你好，请介绍一下你自己。"
+            "我想要去中国旅游，帮我规划一个7天的旅游计划"
         ]
         # if user_input.lower() == "exit":
         #     break
@@ -71,6 +72,7 @@ def chat():
         
         # 使用 chat template 构造输入
         conversation_prompts = [
+            # {"role": "system", "content": "You are a helpful assistant."}, 
             [{'role' : 'user', 'content' : prompt}] for prompt in prompts
         ]
         prompts = [
@@ -90,7 +92,7 @@ def chat():
             attention_mask=inputs.attention_mask,
             use_cache=True,
             do_sample=True,
-            max_new_tokens=128,
+            max_new_tokens=2048,
             temperature=0.7,
             top_p=0.9,
             repetition_penalty=1.1,

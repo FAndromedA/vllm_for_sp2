@@ -924,7 +924,7 @@ class SSEGDNH(nn.Module):
         # chk("sse_v", v, f"{self.layer_idx}.sse_kernel", show=True)
         # chk("sse_b", b, f"{self.layer_idx}.sse_kernel", show=True)
         # chk("sse_g", g, f"{self.layer_idx}.sse_kernel", show=True)
-        print(f"{offsets=}, {state_sizes=}, {global_sorted=}")
+        # print(f"{offsets=}, {state_sizes=}, {global_sorted=}")
         recurrent_state_rec = None
         if use_cache:
             state_id = torch.nonzero(state_sizes.flatten(), as_tuple=True)[0].cpu()

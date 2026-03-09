@@ -27,6 +27,7 @@ if is_flash_attn_varlen_func_available():
 from vllm.logger import init_logger
 
 from vllm.v1.attention.backends.utils import (
+    AttentionCGSupport,
     AttentionMetadataBuilder,
     CommonAttentionMetadata,
     split_decodes_and_prefills,
@@ -85,6 +86,8 @@ class SseMobaFlashAttentionMetadata(FlashAttentionMetadata):
 
 class SseMobaFlashAttentionMetadataBuilder(FlashAttentionMetadataBuilder, AttentionMetadataBuilder[SseMobaFlashAttentionMetadata]):
     
+    _cudagraph_support = AttentionCGSupport.UNIFORM_SINGLE_TOKEN_DECODE
+
     reorder_batch_threshold: int = 1
 
     def build(
@@ -240,8 +243,8 @@ class SseMobaFlashAttentionImpl(FlashAttentionImpl):
                 
                 assert q_p.shape[1] % k_p.shape[1] == 0, f"head q {q_p.shape[1]} must be divisible by head kv {k_p.shape[1]} for MoBA attention"
                 kv_groups = q_p.shape[1] // k_p.shape[1]
-                k_p = torch.repeat_interleave(k_p, kv_groups, dim=1)
-                v_p = torch.repeat_interleave(v_p, kv_groups, dim=1)
+                k_p = torch.repeat_interleave(k_p, kv_groups, dim=1, output_size=q_p.shape[1])
+                v_p = torch.repeat_interleave(v_p, kv_groups, dim=1, output_size=q_p.shape[1])
                 # print(f"{kv_groups=}, q_p shape: {q_p.shape}, k_p shape: {k_p.shape}, v_p shape: {v_p.shape}, cu_base: {cu_base}, cu_seqlens_q_p: {cu_seqlens_q_p}")
                 out_prefill = moba_attn_varlen(
                     q=q_p,

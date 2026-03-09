@@ -70,7 +70,7 @@ def chk(name, x, prefix="", show=False):
         min = torch.abs(x).min().item()
         print(f"[GOOD] {name}: dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
 
-
+@torch.compiler.disable
 def sort_along_l(q, k, v, gk, beta, e, cu_seqlens, K, emulq, emulk):
     _, L, H, D = q.shape
     N = e.size(-1)
@@ -158,11 +158,13 @@ def sse_swa_gdn_h_func_fake(
 ) -> None:
     return
 
+# cudagraph_unsafe: _forward 从 context 读取 attn_metadata 并创建临时张量，graph replay 时 Python 不重跑会导致非法内存访问
 direct_register_custom_op(
     op_name="sse_swa_gdn_h_func",
     op_func=sse_swa_gdn_h_func,
     mutates_args=["core_attn_out"],
     fake_impl=sse_swa_gdn_h_func_fake,
+    # tags=(torch.Tag.cudagraph_unsafe,),
 )
 
         
@@ -594,28 +596,21 @@ class SSE_GDN_H(nn.Module, MambaBase):
         num_actual_tokens = attn_metadata.num_actual_tokens
         constant_caches = self.kv_cache[forward_context.virtual_engine]
 
-        q1, k1 = q1[:num_actual_tokens], k1[:num_actual_tokens]
-        q2, k2 = q2[:num_actual_tokens], k2[:num_actual_tokens]
-        v = v[:num_actual_tokens]
-        g1, g2 = g1[:, :num_actual_tokens], g2[:, :num_actual_tokens]
-        b1, b2 = b1[:, :num_actual_tokens], b2[:, :num_actual_tokens]
-        eta = eta[:num_actual_tokens]
-
         (conv_state_q, conv_state_k, recurrent_state) = constant_caches
         if self.use_short_conv:
             conv_state_q = conv_state_q.transpose(-1, -2)
             conv_state_k = conv_state_k.transpose(-1, -2)
 
-            q_conv_weights = self.q_conv1d_shared.weight.view(
+            q_conv_weights = self.q_conv1d_shared.weight.reshape(
                 self.q_conv1d_shared.size(0), self.q_conv1d_shared.size(2)
             )
-            k_conv_weights = self.k_conv1d_shared.weight.view(
+            k_conv_weights = self.k_conv1d_shared.weight.reshape(
                 self.k_conv1d_shared.size(0), self.k_conv1d_shared.size(2)
             )
 
             if attn_metadata.num_prefills > 0:
-                q1 = causal_conv1d_fn(
-                    q1,
+                q1[:num_actual_tokens] = causal_conv1d_fn(
+                    q1[:num_actual_tokens],
                     q_conv_weights,
                     self.q_conv1d_shared.bias,
                     activation="silu",
@@ -625,8 +620,8 @@ class SSE_GDN_H(nn.Module, MambaBase):
                     query_start_loc=non_spec_query_start_loc,
                     metadata=attn_metadata,
                 ).transpose(0, 1)
-                k1 = causal_conv1d_fn(
-                    k1,
+                k1[:num_actual_tokens] = causal_conv1d_fn(
+                    k1[:num_actual_tokens],
                     k_conv_weights,
                     self.k_conv1d_shared.bias,
                     activation="silu",
@@ -638,8 +633,8 @@ class SSE_GDN_H(nn.Module, MambaBase):
                 ).transpose(0, 1)
             else:
                 decode_conv_indices = non_spec_state_indices_tensor[:attn_metadata.num_actual_tokens]
-                q1 = causal_conv1d_update(
-                    q1, 
+                q1[:num_actual_tokens] = causal_conv1d_update(
+                    q1[:num_actual_tokens], 
                     conv_state_q,
                     q_conv_weights,
                     self.q_conv1d_shared.bias,
@@ -647,8 +642,8 @@ class SSE_GDN_H(nn.Module, MambaBase):
                     conv_state_indices=decode_conv_indices,
                     validate_data=True,
                 )
-                k1 = causal_conv1d_update(
-                    k1, 
+                k1[:num_actual_tokens] = causal_conv1d_update(
+                    k1[:num_actual_tokens], 
                     conv_state_k,
                     k_conv_weights,
                     self.k_conv1d_shared.bias,
@@ -669,7 +664,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
             q1 = F.relu(q1) if self.sse_qk_relu else F.silu(q1)
             q2 = F.relu(q2) if self.sse_qk_relu else F.silu(q2)
         if self.use_k_softmax:
-            k1 = F.softmax(k1.float(), dim=-1).to(v)
+            k1 = F.softmax(k1.float(), dim=-1).to(v) 
             k2 = F.softmax(k2.float(), dim=-1).to(v)
         else:
             k1 = F.relu(k1) if self.sse_qk_relu else F.silu(k1)
@@ -687,10 +682,108 @@ class SSE_GDN_H(nn.Module, MambaBase):
         #     )
         
         # |=====| start of sse_gdn_attention_varlen |=====|
-        v1 = v
-        v2 = v
         cu_seqlens = non_spec_query_start_loc
         S = len(cu_seqlens) - 1
+
+        is_decode_only = (attn_metadata.num_prefills == 0) and (attn_metadata.num_decodes > 0)
+        if is_decode_only:
+            # decode only: enable cuda graph
+            # 这里的 B 在 Graph Replay 时是包含 Padding 的最大 Batch Size, 为了保证 cuda graph safe，我们不能直接使用实际的 num_decodes
+            B = q1.shape[1] # num_tokens, also Batch size for decode-only case
+            v1 = v
+            v2 = v
+            e_softmax = F.softmax(eta, dim=-1, dtype=torch.float)
+            topk_value, topk_expert = torch.topk(e_softmax, k=self.num_writer, dim=2) # [1, B, num_writer]
+            topk_value, e_softmax = topk_value.to(q1.dtype), e_softmax.to(q1.dtype)
+            
+            decode_slots = non_spec_state_indices_tensor[:B] # [B]
+            active_seq_slots = decode_slots.repeat_interleave(self.num_writer + 1, dim=0)
+            
+            base_partition_ids = torch.zeros_like(decode_slots) # [B], all 0 for base partition
+            expert_partition_ids = topk_expert + 1 # [1, B, num_writer], +1 to reserve 0 for base partition
+            active_partition_ids = torch.cat([base_partition_ids.unsqueeze(1), expert_partition_ids.squeeze(0)], dim=1) # [B, num_writer + 1]
+            active_partition_ids = active_partition_ids.reshape(-1) # [B * (num_writer + 1)]
+            # 因为每个 decode seq 长度为 1, 所以不需要重排列把同一序列且 partition_id 相同的 token 聚在一起, 直接按顺序拼接就行
+            q2, k2, v2, g2, b2 = map(
+                lambda x: x.repeat_interleave(self.num_writer, dim=1),
+                (q2, k2, v2, g2, b2)
+            )
+
+            if self.emulq:
+                q2 = q2 * topk_value.reshape(1, -1, 1, 1)
+            if self.emulk:
+                k2 = k2 * topk_value.reshape(1, -1, 1, 1)
+            
+            # qkv2: [1, B * num_writer, H, D] -> [1, B, num_writer, H, D]
+            # gb2: [1, B * num_writer, H] -> [1, B, num_writer, H]
+            q2, k2, v2 = map(
+                lambda x: rearrange(x, '1 (b k) h d -> 1 b k h d', b=B, k=self.num_writer),
+                (q2, k2, v2)
+            )
+            g2 = rearrange(g2, '1 (b k) h -> 1 b k h', b=B, k=self.num_writer)
+            b2 = rearrange(b2, '1 (b k) h -> 1 b k h', b=B, k=self.num_writer)
+            # qkv1: [1, B, H, D] -> [1, B, 1, H, D]
+            # gb1: [1, B, H] -> [1, B, 1, H]
+            q1, k1, v1, g1, b1 = map(
+                lambda x: x.unsqueeze(2),
+                (q1, k1, v1, g1, b1)
+            )
+            q, k, v, g, b = [
+                torch.cat(pair, dim=2) for pair in zip(
+                    (q1, k1, v1, g1, b1), 
+                    (q2, k2, v2, g2, b2)
+                )
+            ]
+            q, k, v = map(
+                lambda x: rearrange(x, '1 b k h d -> 1 (b k) h d'),
+                (q, k, v)
+            )
+            g, b = map(
+                lambda x: rearrange(x, '1 b k h -> 1 (b k) h'),
+                (g, b)
+            )
+            
+            base_lens = cu_seqlens[1:] - cu_seqlens[:-1] # shape: [B]
+            all_lens = base_lens.repeat_interleave(self.num_writer + 1)
+            # all_lens = torch.cat([base_lens, expert_lens], dim=0)
+            # 构建严格正确的 new_cu_seqlens，假 Token 长度为 0，Kernel 会安全跳过它们！
+            new_cu_seqlens = torch.zeros(B + B * self.num_writer + 1, dtype=torch.int32, device=q1.device)
+            new_cu_seqlens[1:] = all_lens.cumsum(dim=0)
+
+            (
+                core_attn_out_non_spec,
+                last_recurrent_state,
+            ) = sse_fused_recurrent_gated_delta_rule(
+                q = q,
+                k = k,
+                v = v,
+                g = g,
+                beta = b,
+                scale = None,
+                initial_state = recurrent_state,
+                inplace_final_state = True,
+                cu_seqlens = new_cu_seqlens,
+                ssm_state_indices = active_seq_slots,
+                num_accepted_tokens = None,
+                use_qk_l2norm_in_kernel = True,
+                ssm_state_expert_indices = active_partition_ids,
+                num_partitions = self.num_sparse_partition + 1,
+            )
+            out = rearrange(core_attn_out_non_spec, '1 (b k) h d -> 1 b k h d', b=B, k=self.num_writer + 1)
+            out_base, out_expert = out[:, :, 0], out[:, :, 1:] # [1, B, H, D], [1, B, num_writer, H, D]
+            out_summed = out_expert.sum(dim=2) # [1, B, H, D]
+            # print(f"{out_base.shape=}, {out_summed.shape=}, {core_attn_out[0, :num_actual_tokens].shape=}")
+            # print(f"{num_actual_tokens=}, {B=}, {out_base.shape=}, {out_summed.shape=}, {core_attn_out[:, :num_actual_tokens].shape=}, {out_base[:, :num_actual_tokens].shape=}, {out_summed[:, :num_actual_tokens].shape=}")
+            core_attn_out[:, :num_actual_tokens] = (out_base + out_summed)[:, :num_actual_tokens]
+            return
+
+
+        q1, k1 = q1[:, :num_actual_tokens], k1[:, :num_actual_tokens]
+        q2, k2 = q2[:, :num_actual_tokens], k2[:, :num_actual_tokens]
+        v1, v2 = v[:, :num_actual_tokens], v[:, :num_actual_tokens]
+        g1, g2 = g1[:, :num_actual_tokens], g2[:, :num_actual_tokens]
+        b1, b2 = b1[:, :num_actual_tokens], b2[:, :num_actual_tokens]
+        eta = eta[:, :num_actual_tokens]
         q2, k2, v2, g2, b2, eta, mask, offsets, state_sizes, global_sorted = sort_along_l(
             q2, k2, v2, g2, b2, eta, cu_seqlens, self.num_writer, self.emulq, self.emulk,
         )
@@ -708,8 +801,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
             torch.zeros_like(non_spec_state_indices_tensor),
             active_partition_ids2 + 1
         ), dim=0)  # [M1 + M2], 0 for shared, 1~N for sparse
-        offsets = torch.cat([cu_seqlens.to(offsets), offsets[1:] + cu_seqlens[-1]])
-        new_cu_seqlens = offsets
+        new_cu_seqlens = torch.cat([cu_seqlens.to(offsets), offsets[1:] + cu_seqlens[-1]])
 
         # chk("sse_q", q, self.prefix, show=True)
         # chk("sse_k", k, self.prefix, show=True)
@@ -747,7 +839,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
             )
             # chk("fla_o", o, self.prefix, show=True)
             # chk("fla_recurrent_state_rec", recurrent_state_rec, self.prefix, show=True)
-            recurrent_state[active_seq_slots, active_partition_ids] = last_recurrent_state.to(
+            recurrent_state[active_seq_slots, active_partition_ids] = last_recurrent_state.to( # both float32
                 dtype=recurrent_state.dtype,
             )
             # assert torch.allclose(recurrent_state[active_seq_slots, active_partition_ids], last_recurrent_state.to(
@@ -756,7 +848,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
             # ))
         elif attn_metadata.num_decodes > 0:
             
-            # TODO: 需要修改 gdn 内核, 使得能够直接读取和写入指定位置的 state
+            # 需要修改 gdn 内核, 使得能够直接读取和写入指定位置的 state
             (
                 core_attn_out_non_spec,
                 last_recurrent_state,
@@ -776,32 +868,22 @@ class SSE_GDN_H(nn.Module, MambaBase):
                 ssm_state_expert_indices = active_partition_ids,
                 num_partitions = self.num_sparse_partition + 1,
             )
-            # tmp = torch.isclose(core_attn_out_non_spec1, core_attn_out_non_spec, rtol=1e-3, atol=1e-2)
-            # # how many elements are not close?
-            # not_close = core_attn_out_non_spec1.numel() - tmp.sum().item()
-            # print(f"not close: {not_close}, percentage: {not_close / core_attn_out_non_spec1.numel() * 100}%")
-            # # max diff between core_attn_out_non_spec1 and core_attn_out_non_spec
-            # diff = torch.max(torch.abs(core_attn_out_non_spec1 - core_attn_out_non_spec))
-            # print(f"max diff: {diff}")
-            # # average diff
-            # diff = torch.mean(torch.abs(core_attn_out_non_spec1 - core_attn_out_non_spec))
-            # print(f"average diff: {diff}")
-            # assert torch.allclose(core_attn_out_non_spec1, core_attn_out_non_spec, rtol=1e-5, atol=1e-5), f"first 10, core1 {core_attn_out_non_spec[:, :10, :5, :5]}, core {core_attn_out_non_spec[:, :10, :5, :5]}"
+            
         else:
             core_attn_out_non_spec, last_recurrent_state = None, None
         
         # if last_recurrent_state is not None and core_attn_out_non_spec is not None:
         #     chk("last_recurrent_state", last_recurrent_state, prefix=self.prefix, show=True)
         
-        o1, o2 = core_attn_out_non_spec[:, :cu_seqlens[-1]], core_attn_out_non_spec[:, cu_seqlens[-1]:]
+        o1, o2 = core_attn_out_non_spec[:, :cu_seqlens[-1]], core_attn_out_non_spec[:, cu_seqlens[-1]:] # [1, num_tokens, H, D], [1, M2, H, D]
         # chk("o1", o1, self.prefix, show=True)
         # chk("o2", o2, self.prefix, show=True)
         
         o2_reduce = torch.zeros_like(o1)
         o2_reduce.index_add_(dim=1, index=global_sorted, source=o2) # 把 o2 按照 global index 汇总到对应位置
         # chk("o2_reduce", o2_reduce, self.prefix, show=True)
-
-        core_attn_out[0, :num_actual_tokens] = o1 + o2_reduce
+        # print(f"{o1.shape=}, {o2.shape=}, {o2_reduce.shape=}, {core_attn_out[0, :num_actual_tokens].shape=}")
+        core_attn_out[:, :num_actual_tokens] = o1 + o2_reduce
         # |=====| end of sse_gdn_attention_varlen |=====|
 
 class SlidingWindowAttention(nn.Module):
@@ -922,10 +1004,10 @@ class SlidingWindowAttention(nn.Module):
         swa_q, swa_k, swa_v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         if self.qk_norm:
             # swa_q, swa_k = self.swa_q_norm(swa_q), self.swa_k_norm(swa_k)
-            swa_q = self.swa_q_norm(swa_q.view(-1, self.num_heads, self.head_dim)).view(
+            swa_q = self.swa_q_norm(swa_q.reshape(-1, self.num_heads, self.head_dim)).reshape(
                 -1, self.q_size
             )
-            swa_k = self.swa_k_norm(swa_k.view(-1, self.num_kv_heads, self.head_dim)).view(
+            swa_k = self.swa_k_norm(swa_k.reshape(-1, self.num_kv_heads, self.head_dim)).reshape(
                 -1, self.kv_size
             )
 
@@ -1012,7 +1094,7 @@ class SSE_SWA_Hybrid(nn.Module):
             rms_norm_eps=rms_norm_eps,
             prefix=f"{prefix}.sse_attn",
         )
-        self.sliding_window_attn = SlidingWindowAttention(
+        self.swa_attn = SlidingWindowAttention(
             layer_idx=layer_idx,
             hidden_size=hidden_size,
             quant_config=quant_config,
@@ -1044,7 +1126,7 @@ class SSE_SWA_Hybrid(nn.Module):
         sse_o = torch.empty_like(output)
         swa_o = torch.empty_like(output)
         self.sse_attn(hidden_states, positions, sse_o)
-        self.sliding_window_attn(hidden_states, positions, swa_o)
+        self.swa_attn(hidden_states, positions, swa_o)
         # chk("sse_o", sse_o, prefix=self.prefix, show=True)
         # chk("swa_o", swa_o, prefix=self.prefix, show=True)
         output[:] = (self.sse_merge_norm(sse_o) + self.swa_merge_norm(swa_o)) / 2
