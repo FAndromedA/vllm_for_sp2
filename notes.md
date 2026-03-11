@@ -17,10 +17,8 @@ curl http://localhost:8711/v1/chat/completions \
   -d '{
         "model": "SSE_SWA_MOBA",
         "messages": [
-          {"role": "system", "content": "You are a helpful assistant."},
           {"role": "user", "content": "我想要去中国旅游，帮我规划一个7天的旅游计划"}
         ],
-        "do_sample": true,
         "temperature": 0.7,
         "max_tokens": 2048,
         "top_p": 0.9,
@@ -59,7 +57,7 @@ TORCHDYNAMO_VERBOSE=1 CUDA_VISIBLE_DEVICES=4,5,6,7 nohup vllm serve /mnt/jfzn/py
 TORCHDYNAMO_VERBOSE=1 nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling --max-model-len 65536 --served-model-name SSE_SWA_MOBA --gpu-memory-utilization 0.65 --tensor-parallel-size 4 --pipeline-parallel-size 2 --block-size 128 --dtype bfloat16 --port 8711 --trust-remote-code --enforce-eager > _vllm_serve_sse_swa_moba.log 2>&1
 
 
-TORCHDYNAMO_VERBOSE=1 nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling --max-model-len 65536 --served-model-name SSE_SWA_MOBA --gpu-memory-utilization 0.65 --tensor-parallel-size 4 --block-size 128 --dtype bfloat16 --port 8711 --trust-remote-code --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' > _vllm_serve_sse_swa_moba.log 2>&1
+TORCHDYNAMO_VERBOSE=1 nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling --max-model-len 32768 --no-enable-chunked-prefill --served-model-name SSE_SWA_MOBA --gpu-memory-utilization 0.85 --tensor-parallel-size 4 --block-size 128 --dtype bfloat16 --port 8711 --trust-remote-code --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' > _vllm_serve_sse_swa_moba.log 2>&1
 
 
 TORCHDYNAMO_VERBOSE=1 CUDA_VISIBLE_DEVICES=4,5,6,7 nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_moba_gdn_u1to3_pureSwa_1.7b_dense_lr3en5_min0p1_bsz64_ep1_aux1en3_pt_data_800k/modeling2/ --max-model-len 65536 --served-model-name SSE_SWA_MOBA --gpu-memory-utilization 0.65 --block-size 128 --dtype bfloat16 --port 8711 --trust-remote-code --enforce-eager > _vllm_serve_sse_swa_moba_pureSWA.log 2>&1
@@ -99,18 +97,18 @@ nohup lm_eval \
     "pretrained": "/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling",
     "tensor_parallel_size": 8,
     "gpu_memory_utilization": 0.9,
-    "max_model_len": 524288,
+    "max_model_len": 16384,
     "dtype": "bfloat16",
     "block_size": 128,
     "enable_chunked_prefill": false,
     "compilation_config": {"cudagraph_mode": "FULL_DECODE_ONLY"}
   }' \
-  --tasks bbh_cot_fewshot \
-  --num_fewshot 3 \
+  --tasks gsm8k_cot \
+  --num_fewshot 4 \
   --batch_size auto \
   --log_samples \
   --apply_chat_template false \
-  --output_path lm_eval_results/bbh_512K_nochat2 > /mnt/jfzn/zjh/V2_dev_bench/logs/bbh_cot3_512K_sp2_vllm2.log 2>&1 &
+  --output_path lm_eval_results/gsm8k_cot_nochat > /mnt/jfzn/zjh/V2_dev_bench/logs/gsm8k_cot_sp2_vllm.log 2>&1 &
 
 
 "enforce_eager": true
@@ -135,3 +133,23 @@ HF_ALLOW_CODE_EVAL=1 nohup lm_eval \
   --apply_chat_template \
   --log_samples \
   --output_path lm_eval_results/humaneval > /mnt/jfzn/zjh/V2_dev_bench/logs/humaneval_sp2_vllm.log 2>&1 &
+
+nohup lm_eval \
+  --model vllm \
+  --model_args '{
+    "pretrained": "/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling",
+    "tensor_parallel_size": 8,
+    "gpu_memory_utilization": 0.9,
+    "max_model_len": 131072,
+    "max_num_batched_tokens": 131072,
+    "dtype": "bfloat16",
+    "block_size": 128,
+    "enable_chunked_prefill": false,
+    "compilation_config": {"cudagraph_mode": "FULL_DECODE_ONLY"}
+  }' \
+  --tasks aime25 \
+  --num_fewshot 0 \
+  --batch_size 1 \
+  --apply_chat_template \
+  --log_samples \
+  --output_path lm_eval_results/aime25 > /mnt/jfzn/zjh/V2_dev_bench/logs/aime25_sp2_vllm.log 2>&1 &

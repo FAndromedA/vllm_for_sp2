@@ -58,6 +58,11 @@ def chk(name, x, prefix="", show=False):
     if x is None: return
     if prefix != "":
         name = prefix + "." + name
+    if show:
+        max = torch.abs(x).max().item()
+        min = torch.abs(x).min().item()
+        print(f"[GOOD] {name}: dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
+        return
     if not torch.isfinite(x).all():
         bad = (~torch.isfinite(x)).sum().item()
         max = torch.abs(x).max().item()
@@ -65,10 +70,6 @@ def chk(name, x, prefix="", show=False):
         print(f"[BAD] {name}: nonfinite={bad}, dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
         
         raise RuntimeError(f"nonfinite in {name}")
-    if show:
-        max = torch.abs(x).max().item()
-        min = torch.abs(x).min().item()
-        print(f"[GOOD] {name}: dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
 
 @torch.compiler.disable
 def sort_along_l(q, k, v, gk, beta, e, cu_seqlens, K, emulq, emulk):
@@ -267,10 +268,9 @@ class SSE_GDN_H(nn.Module, MambaBase):
             a1_local = a1_all.narrow(0, start_idx, heads_per_rank)  # [heads_per_rank]
             a2_local = a2_all.narrow(0, start_idx, heads_per_rank)  # [heads_per_rank]
             
-            # 4. 重排为 head-major 布局: [a1_i, a2_i, a1_j, a2_j, ...]
-            #    通过 stack(dim=1) + reshape 实现高效 interleaving
-            local_weights = torch.stack([a1_local, a2_local], dim=1).reshape(-1)  # [2 * heads_per_rank]
-            
+            # 4. 重排为 head-major 布局: [a1_i, a1_j, a2_i, a2_j, ...]
+            local_weights = torch.cat([a1_local, a2_local])
+
             # 5. 验证目标形状并复制
             assert param.shape == local_weights.shape, \
                 f"Shape mismatch: param={param.shape}, local_weights={local_weights.shape}"
@@ -508,21 +508,6 @@ class SSE_GDN_H(nn.Module, MambaBase):
         # hidden_state [num_tokens, hidden_size]
         num_tokens = hidden_states.size(0)
 
-        # forward_context = get_forward_context()
-        # attn_metadata: AttentionMetadata = forward_context.attn_metadata
-        # if attn_metadata is not None:
-        #     assert isinstance(attn_metadata, dict)
-        #     attn_metadata = attn_metadata[self.prefix]
-        #     assert isinstance(attn_metadata, GDNAttentionMetadata)
-
-        #     sample_idx_flat, relpos_flat, global_idx_flat, lengths = \
-        #         prepare_sample_relpos_global_index_flat(attn_metadata.non_spec_query_start_loc, self.num_writer)
-        # else: # V1 profile run, no attn_metadata
-        #     sample_idx_flat = torch.empty(num_tokens * self.num_writer, dtype=torch.long, device=hidden_states.device)
-        #     relpos_flat = torch.empty(num_tokens * self.num_writer, dtype=torch.long, device=hidden_states.device)
-        #     global_idx_flat = torch.empty(num_tokens * self.num_writer, dtype=torch.long, device=hidden_states.device)
-        #     lengths = torch.empty(num_tokens * self.num_writer, dtype=torch.long, device=hidden_states.device)
-        
         sse_q1, _ = self.sse_q_proj(hidden_states)
         sse_k1, _ = self.sse_k_proj(hidden_states)
         sse_q2 = sse_q1 + self.lora_q_proj_B(self.lora_q_proj_A(hidden_states)[0])[0] # [0] because Linear returns output and bias
@@ -530,9 +515,9 @@ class SSE_GDN_H(nn.Module, MambaBase):
         sse_v, _ = self.sse_v_proj(hidden_states)
         sse_a, _ = self.sse_a_proj(hidden_states)
         sse_b, _ = self.sse_b_proj(hidden_states) # [num_tokens, 2 * sse_tp_kv_heads]
-        g, beta = fused_gdn_gating(self.A_log, sse_a, sse_b, self.dt_bias)
+        g, beta = fused_gdn_gating(self.A_log, sse_a, sse_b, self.dt_bias) 
         if self.allow_neg_eigval:
-            beta = beta * 2.        
+            beta = beta * 2.
         b1, b2 = torch.chunk(beta, 2, dim=-1) # [1, num_tokens, 2 * HV] -> [1, num_tokens, HV]
         g1, g2 = torch.chunk(g, 2, dim=-1)
         eta = self.sse_e_proj(hidden_states)[0] # [num_tokens, num_sparse_partition]
@@ -565,6 +550,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
         else:
             core_attn_out = self.sse_o_norm(core_attn_out)
         core_attn_out = rearrange(core_attn_out, "1 n h d -> n (h d)")
+        # chk("core_attn_out", core_attn_out, self.prefix, show=True)
         sse_o, _ = self.sse_o_proj(core_attn_out)
         output[:] = sse_o
         # output[:] = (self.sse_merge_norm(sse_o) + self.swa_merge_norm(swa_o)) / 2
@@ -592,7 +578,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
 
         has_initial_state = attn_metadata.has_initial_state
         non_spec_query_start_loc = attn_metadata.non_spec_query_start_loc
-        non_spec_state_indices_tensor = attn_metadata.non_spec_state_indices_tensor
+        non_spec_state_indices_tensor = attn_metadata.non_spec_state_indices_tensor # [num_actual_tokens]
         num_actual_tokens = attn_metadata.num_actual_tokens
         constant_caches = self.kv_cache[forward_context.virtual_engine]
 
@@ -700,6 +686,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
             active_seq_slots = decode_slots.repeat_interleave(self.num_writer + 1, dim=0)
             
             base_partition_ids = torch.zeros_like(decode_slots) # [B], all 0 for base partition
+            # logger.warning(f"{non_spec_state_indices_tensor.shape=}, {decode_slots.shape=}, {active_seq_slots.shape=}, {base_partition_ids.shape=}, {topk_expert.shape=}")
             expert_partition_ids = topk_expert + 1 # [1, B, num_writer], +1 to reserve 0 for base partition
             active_partition_ids = torch.cat([base_partition_ids.unsqueeze(1), expert_partition_ids.squeeze(0)], dim=1) # [B, num_writer + 1]
             active_partition_ids = active_partition_ids.reshape(-1) # [B * (num_writer + 1)]
@@ -742,7 +729,11 @@ class SSE_GDN_H(nn.Module, MambaBase):
                 lambda x: rearrange(x, '1 b k h -> 1 (b k) h'),
                 (g, b)
             )
-            
+            # chk("sse_q", q, self.prefix, show=True)
+            # chk("sse_k", k, self.prefix, show=True)
+            # chk("sse_v", v, self.prefix, show=True)
+            # chk("sse_b", b, self.prefix, show=True)
+            # chk("sse_g", g, self.prefix, show=True)
             base_lens = cu_seqlens[1:] - cu_seqlens[:-1] # shape: [B]
             all_lens = base_lens.repeat_interleave(self.num_writer + 1)
             # all_lens = torch.cat([base_lens, expert_lens], dim=0)
@@ -772,8 +763,10 @@ class SSE_GDN_H(nn.Module, MambaBase):
             out = rearrange(core_attn_out_non_spec, '1 (b k) h d -> 1 b k h d', b=B, k=self.num_writer + 1)
             out_base, out_expert = out[:, :, 0], out[:, :, 1:] # [1, B, H, D], [1, B, num_writer, H, D]
             out_summed = out_expert.sum(dim=2) # [1, B, H, D]
-            # print(f"{out_base.shape=}, {out_summed.shape=}, {core_attn_out[0, :num_actual_tokens].shape=}")
-            # print(f"{num_actual_tokens=}, {B=}, {out_base.shape=}, {out_summed.shape=}, {core_attn_out[:, :num_actual_tokens].shape=}, {out_base[:, :num_actual_tokens].shape=}, {out_summed[:, :num_actual_tokens].shape=}")
+            
+            # chk("out_base", out_base, self.prefix, show=True)
+            # chk("out_summed", out_summed, self.prefix, show=True)
+            # print(f"{out_base[0, :10, 0, 0]=}, {out_summed[0, :10, 0, 0]=}")
             core_attn_out[:, :num_actual_tokens] = (out_base + out_summed)[:, :num_actual_tokens]
             return
 
@@ -882,7 +875,8 @@ class SSE_GDN_H(nn.Module, MambaBase):
         o2_reduce = torch.zeros_like(o1)
         o2_reduce.index_add_(dim=1, index=global_sorted, source=o2) # 把 o2 按照 global index 汇总到对应位置
         # chk("o2_reduce", o2_reduce, self.prefix, show=True)
-        # print(f"{o1.shape=}, {o2.shape=}, {o2_reduce.shape=}, {core_attn_out[0, :num_actual_tokens].shape=}")
+        # print(f"{o1[0, :20, :2, :2]=}, {o2_reduce[0, :20, :2, :2]=}")
+
         core_attn_out[:, :num_actual_tokens] = o1 + o2_reduce
         # |=====| end of sse_gdn_attention_varlen |=====|
 

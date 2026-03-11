@@ -12,7 +12,6 @@ from vllm.model_executor.layers.fla.ops.op import exp
         "IS_VARLEN": lambda args: args["cu_seqlens"] is not None,
         "IS_CONTINUOUS_BATCHING": lambda args: args["ssm_state_indices"] is not None,
         "IS_SPEC_DECODING": lambda args: args["num_accepted_tokens"] is not None,
-        "IS_SSE": lambda args: args["ssm_state_expert_indices"] is not None,
     }
 )
 @triton.jit(do_not_specialize=["N", "T"])
@@ -265,6 +264,7 @@ def sse_fused_recurrent_gated_delta_rule_fwd(
         USE_QK_L2NORM_IN_KERNEL=use_qk_l2norm_in_kernel,
         INPLACE_FINAL_STATE=inplace_final_state,
         IS_KDA=False,
+        IS_SSE=True,
         num_warps=num_warps,
         num_stages=num_stages,
         num_partitions=num_partitions,

@@ -67,6 +67,11 @@ def chk(name, x, prefix="", show=False):
     if x is None: return
     if prefix != "":
         name = prefix + "." + name
+    if show:
+        max = torch.abs(x).max().item()
+        min = torch.abs(x).min().item()
+        print(f"[GOOD] {name}: dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
+        return
     if not torch.isfinite(x).all():
         bad = (~torch.isfinite(x)).sum().item()
         max = torch.abs(x).max().item()
@@ -74,10 +79,6 @@ def chk(name, x, prefix="", show=False):
         print(f"[BAD] {name}: nonfinite={bad}, dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
         
         raise RuntimeError(f"nonfinite in {name}")
-    if show:
-        max = torch.abs(x).max().item()
-        min = torch.abs(x).min().item()
-        print(f"[GOOD] {name}: dtype={x.dtype}, shape={tuple(x.shape)}, max={max}, min={min}")
 
 class MixtureOfBlocksAttention(nn.Module, AttentionLayerBase):
     # Placeholder for MoBA attention implementation
