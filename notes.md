@@ -79,16 +79,17 @@ nohup lm_eval \
   --model vllm \
   --model_args '{
     "pretrained": "/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling",
-    "tensor_parallel_size": 4,
-    "gpu_memory_utilization": 0.75,
-    "max_model_len": 16384,
+    "tensor_parallel_size": 8,
+    "gpu_memory_utilization": 0.8,
+    "max_model_len": 524288,
     "dtype": "bfloat16",
     "block_size": 128,
+    "enable_chunked_prefill": false,
     "compilation_config": {"cudagraph_mode": "FULL_DECODE_ONLY"}
   }' \
   --tasks bbh_cot_fewshot \
   --num_fewshot 3 \
-  --batch_size auto \
+  --batch_size 2 \
   --output_path lm_eval_results/bbh > /mnt/jfzn/zjh/V2_dev_bench/logs/bbh_cot3_sp2_vllm.log 2>&1 &
 
 nohup lm_eval \
@@ -96,8 +97,8 @@ nohup lm_eval \
   --model_args '{
     "pretrained": "/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling",
     "tensor_parallel_size": 8,
-    "gpu_memory_utilization": 0.9,
-    "max_model_len": 16384,
+    "gpu_memory_utilization": 0.8,
+    "max_model_len": 524288,
     "dtype": "bfloat16",
     "block_size": 128,
     "enable_chunked_prefill": false,
@@ -105,9 +106,8 @@ nohup lm_eval \
   }' \
   --tasks gsm8k_cot \
   --num_fewshot 4 \
-  --batch_size auto \
+  --batch_size 2 \
   --log_samples \
-  --apply_chat_template false \
   --output_path lm_eval_results/gsm8k_cot_nochat > /mnt/jfzn/zjh/V2_dev_bench/logs/gsm8k_cot_sp2_vllm.log 2>&1 &
 
 
@@ -150,6 +150,24 @@ nohup lm_eval \
   --tasks aime25 \
   --num_fewshot 0 \
   --batch_size 1 \
-  --apply_chat_template \
   --log_samples \
   --output_path lm_eval_results/aime25 > /mnt/jfzn/zjh/V2_dev_bench/logs/aime25_sp2_vllm.log 2>&1 &
+
+
+nohup lm_eval \
+  --model vllm \
+  --model_args '{
+    "pretrained": "/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling",
+    "tensor_parallel_size": 8,
+    "gpu_memory_utilization": 0.50,
+    "max_model_len": 32768,
+    "max_num_batched_tokens": 32768,
+    "dtype": "bfloat16",
+    "block_size": 128,
+    "enable_chunked_prefill": false,
+    "compilation_config": {"cudagraph_mode": "FULL_DECODE_ONLY"}
+  }' \
+  --tasks mmlu \
+  --batch_size auto \
+  --log_samples \
+  --output_path lm_eval_results/mmlu > /mnt/jfzn/zjh/V2_dev_bench/logs/mmlu_sp2_vllm.log 2>&1 &

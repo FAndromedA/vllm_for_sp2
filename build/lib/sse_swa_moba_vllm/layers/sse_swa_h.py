@@ -729,11 +729,11 @@ class SSE_GDN_H(nn.Module, MambaBase):
                 lambda x: rearrange(x, '1 b k h -> 1 (b k) h'),
                 (g, b)
             )
-            chk("sse_q", q, self.prefix, show=True)
-            chk("sse_k", k, self.prefix, show=True)
-            chk("sse_v", v, self.prefix, show=True)
-            chk("sse_b", b, self.prefix, show=True)
-            chk("sse_g", g, self.prefix, show=True)
+            # chk("sse_q", q, self.prefix, show=True)
+            # chk("sse_k", k, self.prefix, show=True)
+            # chk("sse_v", v, self.prefix, show=True)
+            # chk("sse_b", b, self.prefix, show=True)
+            # chk("sse_g", g, self.prefix, show=True)
             base_lens = cu_seqlens[1:] - cu_seqlens[:-1] # shape: [B]
             all_lens = base_lens.repeat_interleave(self.num_writer + 1)
             # all_lens = torch.cat([base_lens, expert_lens], dim=0)
@@ -764,9 +764,9 @@ class SSE_GDN_H(nn.Module, MambaBase):
             out_base, out_expert = out[:, :, 0], out[:, :, 1:] # [1, B, H, D], [1, B, num_writer, H, D]
             out_summed = out_expert.sum(dim=2) # [1, B, H, D]
             
-            chk("out_base", out_base, self.prefix, show=True)
-            chk("out_summed", out_summed, self.prefix, show=True)
-
+            # chk("out_base", out_base, self.prefix, show=True)
+            # chk("out_summed", out_summed, self.prefix, show=True)
+            # print(f"{out_base[0, :10, 0, 0]=}, {out_summed[0, :10, 0, 0]=}")
             core_attn_out[:, :num_actual_tokens] = (out_base + out_summed)[:, :num_actual_tokens]
             return
 
@@ -796,11 +796,11 @@ class SSE_GDN_H(nn.Module, MambaBase):
         ), dim=0)  # [M1 + M2], 0 for shared, 1~N for sparse
         new_cu_seqlens = torch.cat([cu_seqlens.to(offsets), offsets[1:] + cu_seqlens[-1]])
 
-        chk("sse_q", q, self.prefix, show=True)
-        chk("sse_k", k, self.prefix, show=True)
-        chk("sse_v", v, self.prefix, show=True)
-        chk("sse_b", b, self.prefix, show=True)
-        chk("sse_g", g, self.prefix, show=True)
+        # chk("sse_q", q, self.prefix, show=True)
+        # chk("sse_k", k, self.prefix, show=True)
+        # chk("sse_v", v, self.prefix, show=True)
+        # chk("sse_b", b, self.prefix, show=True)
+        # chk("sse_g", g, self.prefix, show=True)
         # print(f"{offsets=}, {state_sizes=}, {global_sorted=}")
 
         assert active_seq_slots.numel() == new_cu_seqlens.numel() - 1
@@ -869,13 +869,13 @@ class SSE_GDN_H(nn.Module, MambaBase):
         #     chk("last_recurrent_state", last_recurrent_state, prefix=self.prefix, show=True)
         
         o1, o2 = core_attn_out_non_spec[:, :cu_seqlens[-1]], core_attn_out_non_spec[:, cu_seqlens[-1]:] # [1, num_tokens, H, D], [1, M2, H, D]
-        chk("o1", o1, self.prefix, show=True)
+        # chk("o1", o1, self.prefix, show=True)
         # chk("o2", o2, self.prefix, show=True)
         
         o2_reduce = torch.zeros_like(o1)
         o2_reduce.index_add_(dim=1, index=global_sorted, source=o2) # 把 o2 按照 global index 汇总到对应位置
-        chk("o2_reduce", o2_reduce, self.prefix, show=True)
-        print(f"{o1[0, :20, :2, :2]=}, {o2_reduce[0, :20, :2, :2]=}")
+        # chk("o2_reduce", o2_reduce, self.prefix, show=True)
+        # print(f"{o1[0, :20, :2, :2]=}, {o2_reduce[0, :20, :2, :2]=}")
 
         core_attn_out[:, :num_actual_tokens] = o1 + o2_reduce
         # |=====| end of sse_gdn_attention_varlen |=====|
