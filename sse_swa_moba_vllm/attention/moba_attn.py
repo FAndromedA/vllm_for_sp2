@@ -35,7 +35,7 @@ from vllm.v1.attention.backends.utils import (
 
 logger = init_logger(__name__)
 
-from .moba_attn_ops import moba_attn_varlen
+from .moba_attn_ops import moba_attn_varlen_paged
 from vllm.v1.attention.backends.flash_attn import (
     FlashAttentionBackend, 
     FlashAttentionImpl,
@@ -233,27 +233,33 @@ class SseMobaFlashAttentionImpl(FlashAttentionImpl):
 
             if num_prefill_tokens > 0:
                 q_p = query[num_decode_tokens: num_decode_tokens + num_prefill_tokens]
-                k_p = key[num_decode_tokens: num_decode_tokens + num_prefill_tokens]
-                v_p = value[num_decode_tokens: num_decode_tokens + num_prefill_tokens]
                 cu_base = cu_seqlens_q[num_decodes]
                 cu_seqlens_q_p = cu_seqlens_q[num_decodes: num_decodes + num_prefills + 1] - cu_base
-                # chk("q_p", q_p, show=True)
-                # chk("k_p", k_p, show=True)
-                # chk("v_p", v_p, show=True)
-                
-                assert q_p.shape[1] % k_p.shape[1] == 0, f"head q {q_p.shape[1]} must be divisible by head kv {k_p.shape[1]} for MoBA attention"
-                kv_groups = q_p.shape[1] // k_p.shape[1]
-                k_p = torch.repeat_interleave(k_p, kv_groups, dim=1, output_size=q_p.shape[1])
-                v_p = torch.repeat_interleave(v_p, kv_groups, dim=1, output_size=q_p.shape[1])
-                # print(f"{kv_groups=}, q_p shape: {q_p.shape}, k_p shape: {k_p.shape}, v_p shape: {v_p.shape}, cu_base: {cu_base}, cu_seqlens_q_p: {cu_seqlens_q_p}")
-                out_prefill = moba_attn_varlen(
+
+                seq_lens_p = attn_metadata.seq_lens[
+                    num_decodes: num_decodes + num_prefills
+                ]
+                block_table_p = attn_metadata.block_table[
+                    num_decodes: num_decodes + num_prefills
+                ]
+                # max_seqlen_q_p = int((cu_seqlens_q[1:] - cu_seqlens_q[:-1]).max().item())
+                max_seqlen_q_p = int((cu_seqlens_q_p[1:] - cu_seqlens_q_p[:-1]).max().item()) if cu_seqlens_q_p.numel() > 1 else 0
+                max_seqlen_k_p = int(seq_lens_p.max().item()) if seq_lens_p.numel() > 0 else 0
+                # logger.info(f"{q_p.shape=}, {key.shape=}")
+                out_prefill = moba_attn_varlen_paged(
                     q=q_p,
-                    k=k_p,
-                    v=v_p,
-                    cu_seqlens=cu_seqlens_q_p,
-                    max_seqlen=max_seqlen_q, # because decodes max is 1, so prefill max is same as query max
+                    key_cache=key_cache,
+                    value_cache=value_cache,
+                    cu_seqlens_q=cu_seqlens_q_p,
+                    seqused_k=seq_lens_p,
+                    block_table=block_table_p,
+                    max_seqlen_q=max_seqlen_q_p,
+                    max_seqlen_k=max_seqlen_k_p,
                     moba_chunk_size=self.moba_chunk_size,
                     moba_topk=self.moba_topk,
+                    kv_cache_dtype=self.kv_cache_dtype,
+                    k_scale=layer._k_scale,
+                    v_scale=layer._v_scale,
                 )
                 # chk("out_prefill", out_prefill)
                 output[num_decode_tokens: num_decode_tokens + num_prefill_tokens] = out_prefill

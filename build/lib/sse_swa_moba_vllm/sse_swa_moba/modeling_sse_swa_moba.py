@@ -133,7 +133,7 @@ class SseSwaMobaDecoderLayer(nn.Module):
                     head_dim=config.head_dim,
                     qkv_bias=config.attn['qkv_bias'],
                     qk_norm=config.attn['qk_norm'],
-                    window_size=config.attn['window_size'],
+                    window_size=None,
                     rope_theta=config.attn['rope_theta'],
                     rope_scaling=config.rope_scaling,
                     is_moba=True,
@@ -417,9 +417,9 @@ class SseSwaMobaForCausalLM(
             # === SSE_GDN_H (sse_attn) 内部模块 ===
             "attn.A_log": "attn.sse_attn.A_log",
             "attn.dt_bias": "attn.sse_attn.dt_bias",
-            "attn.sse_q_proj": "attn.sse_attn.sse_q_proj",
-            "attn.sse_k_proj": "attn.sse_attn.sse_k_proj",
-            "attn.sse_v_proj": "attn.sse_attn.sse_v_proj",
+            # "attn.sse_q_proj": "attn.sse_attn.sse_q_proj",
+            # "attn.sse_k_proj": "attn.sse_attn.sse_k_proj",
+            # "attn.sse_v_proj": "attn.sse_attn.sse_v_proj",
             "attn.lora_q_proj.0": "attn.sse_attn.lora_q_proj_A",
             "attn.lora_q_proj.1": "attn.sse_attn.lora_q_proj_B",
             "attn.lora_k_proj.0": "attn.sse_attn.lora_k_proj_A",
@@ -447,7 +447,10 @@ class SseSwaMobaForCausalLM(
             ("attn.qkv_proj", "attn.q_proj", "q"),
             ("attn.qkv_proj", "attn.k_proj", "k"),
             ("attn.qkv_proj", "attn.v_proj", "v"),
-
+            # SSE Attention QKV 合并
+            ("attn.sse_attn.sse_qkv_proj", "attn.sse_q_proj", 0),
+            ("attn.sse_attn.sse_qkv_proj", "attn.sse_k_proj", 1),
+            ("attn.sse_attn.sse_qkv_proj", "attn.sse_v_proj", 2),
             # SWA Attention QKV 合并 
             ("attn.swa_attn.swa_qkv_proj", "attn.swa_q_proj", "q"),
             ("attn.swa_attn.swa_qkv_proj", "attn.swa_k_proj", "k"),

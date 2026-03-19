@@ -10,6 +10,8 @@ from flash_attn.flash_attn_interface import (
 from functools import lru_cache
 from einops import rearrange
 
+from flash_moba import flash_moba_varlen_func
+
 
 @lru_cache(maxsize=16)
 def calc_chunks(cu_seqlen, moba_chunk_size):
@@ -38,17 +40,18 @@ def calc_chunks(cu_seqlen, moba_chunk_size):
     # cu_chunk[chunk_idx] = the start chunk offset of chunk idx
     cu_chunk = chunk_sizes.cumsum(dim=-1, dtype=torch.int32)
     # chunk_to_batch[chunk_idx] = batch idx of the chunk idx
+    # from chunk idx -> batch idx
     chunk_to_batch = torch.zeros(
         (num_chunk,), dtype=torch.int32, device=cu_seqlen.device
     )
-    chunk_to_batch[cu_num_chunk[1:-1]] = 1
+    chunk_to_batch[cu_num_chunk[1:-1]] = 1 # cumsum 出来呈阶梯状，在每个batch的第一个chunk位置上加1，后续cumsum后就得到了chunk idx -> batch idx的映射
     chunk_to_batch = chunk_to_batch.cumsum(dim=0, dtype=torch.int32)
 
     """ filter chunks that need moba attn """
 
     # filter chunks ( remove last chunk of each batch )
     # filtered_chunk_indices: chunk index list that excludes the last chunk of each batch
-    chunk_to_remove = cu_num_chunk[1:] - 1
+    chunk_to_remove = cu_num_chunk[1:] - 1 # cumsum chunk idx - 1 is the last chunk idx of each batch
     chunk_to_remain = torch.ones(
         (num_chunk,), dtype=torch.bool, device=cu_seqlen.device
     )
@@ -304,10 +307,10 @@ def moba_attn_varlen(
 
     """ prepare chunk meta """
     (
-        cu_chunk,
-        filtered_chunk_indices,
+        cu_chunk, # cumulative chunk size
+        filtered_chunk_indices, # the chunk indices that are selected for moba attn, excluding the last chunk of each batch
         num_filtered_chunk,
-        chunk_to_batch,
+        chunk_to_batch, # from chunk idx -> batch idx
     ) = calc_chunks(cu_seqlens, moba_chunk_size)
 
     # we will adjust selective topk to moba_topk - 1, as the last chunk is always chosen
@@ -441,3 +444,184 @@ def moba_attn_varlen(
         moba_chunk_size,
         moba_q_sh_indices,
     )
+
+
+def _build_cu_seqlens_from_seq_lens(seq_lens: torch.Tensor) -> torch.Tensor:
+    seq_lens_i32 = seq_lens.to(dtype=torch.int32)
+    return torch.cat(
+        (
+            torch.zeros((1,), dtype=torch.int32, device=seq_lens.device),
+            seq_lens_i32.cumsum(dim=0, dtype=torch.int32),
+        ),
+        dim=0,
+    )
+
+
+def _gather_paged_kv_from_cache(
+    key_cache: torch.Tensor, # kv_cache: shape =[num_blocks, block_size, num_kv_heads, head_size]
+    value_cache: torch.Tensor,
+    block_table: torch.Tensor,
+    seq_lens: torch.Tensor,
+    kv_cache_dtype: str,
+    k_scale: torch.Tensor | None,
+    v_scale: torch.Tensor | None,
+    out_dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Gather paged KV cache into dense [total_k, H_kv, D] tensors."""
+    device = key_cache.device
+    block_size = key_cache.shape[1]
+    num_seqs = seq_lens.shape[0]
+
+    slot_indices: list[torch.Tensor] = []
+    for seq_idx in range(num_seqs):
+        kv_len = int(seq_lens[seq_idx].item())
+        if kv_len <= 0:
+            continue
+        num_blocks = (kv_len + block_size - 1) // block_size
+        seq_blocks = block_table[seq_idx, :num_blocks].to(dtype=torch.int64)
+        pos = torch.arange(kv_len, device=device, dtype=torch.int64)
+        block_idx = pos // block_size
+        offset = pos % block_size
+        slots = seq_blocks.index_select(0, block_idx) * block_size + offset
+        slot_indices.append(slots)
+
+    if len(slot_indices) == 0:
+        k_out = torch.empty(
+            (0, key_cache.shape[2], key_cache.shape[3]),
+            dtype=out_dtype,
+            device=device,
+        )
+        v_out = torch.empty_like(k_out)
+        return k_out, v_out
+
+    flat_slots = torch.cat(slot_indices, dim=0)
+    flat_k = key_cache.reshape(-1, key_cache.shape[2], key_cache.shape[3])
+    flat_v = value_cache.reshape(-1, value_cache.shape[2], value_cache.shape[3])
+    k_dense = flat_k.index_select(0, flat_slots)
+    v_dense = flat_v.index_select(0, flat_slots)
+
+    # FP8 cache stores quantized values; dequantize with layer scale.
+    if kv_cache_dtype.startswith("fp8"):
+        k_dense = k_dense.float()
+        v_dense = v_dense.float()
+        if k_scale is not None:
+            k_dense = k_dense * k_scale.float()
+        if v_scale is not None:
+            v_dense = v_dense * v_scale.float()
+
+    return k_dense.to(dtype=out_dtype), v_dense.to(dtype=out_dtype)
+
+
+def _pad_suffix_q_to_full_kv(
+    q: torch.Tensor,
+    cu_seqlens_q: torch.Tensor,
+    cu_seqlens_k: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Expand suffix-only q to full-kv length by left-padding each sequence."""
+    assert cu_seqlens_q.shape == cu_seqlens_k.shape
+    num_seqs = cu_seqlens_q.shape[0] - 1
+
+    q_full = torch.zeros(
+        (int(cu_seqlens_k[-1].item()), q.shape[1], q.shape[2]),
+        dtype=q.dtype,
+        device=q.device,
+    )
+    out_indices: list[torch.Tensor] = []
+    for seq_idx in range(num_seqs):
+        q_s = int(cu_seqlens_q[seq_idx].item())
+        q_e = int(cu_seqlens_q[seq_idx + 1].item())
+        k_s = int(cu_seqlens_k[seq_idx].item())
+        k_e = int(cu_seqlens_k[seq_idx + 1].item())
+        q_len = q_e - q_s
+        k_len = k_e - k_s
+        assert q_len <= k_len, (
+            f"q_len should be <= kv_len for each sequence, got q_len={q_len}, "
+            f"kv_len={k_len} at seq_idx={seq_idx}"
+        )
+        if q_len == 0:
+            continue
+        start_in_k = k_e - q_len
+        q_full[start_in_k:k_e] = q[q_s:q_e]
+        out_indices.append(
+            torch.arange(start_in_k, k_e, dtype=torch.int64, device=q.device)
+        )
+
+    if len(out_indices) == 0:
+        return q_full, torch.empty((0,), dtype=torch.int64, device=q.device)
+    return q_full, torch.cat(out_indices, dim=0)
+
+
+def moba_attn_varlen_paged(
+    q: torch.Tensor,
+    key_cache: torch.Tensor,
+    value_cache: torch.Tensor,
+    cu_seqlens_q: torch.Tensor,
+    seqused_k: torch.Tensor,
+    block_table: torch.Tensor,
+    max_seqlen_q: int,
+    max_seqlen_k: int,
+    moba_chunk_size: int,
+    moba_topk: int,
+    kv_cache_dtype: str = "auto",
+    k_scale: torch.Tensor | None = None,
+    v_scale: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """MOBA attention for suffix-only queries over paged KV cache.
+
+    This is designed for chunked prefill / multi-turn conversations where
+    q only contains newly scheduled tokens while kv cache contains full history.
+    """
+    num_seqs = cu_seqlens_q.shape[0] - 1
+    seq_lens_k = seqused_k[:num_seqs].to(dtype=torch.int32)
+    cu_seqlens_k = _build_cu_seqlens_from_seq_lens(seq_lens_k)
+    # to support chunked prefill.
+    k_dense, v_dense = _gather_paged_kv_from_cache(
+        key_cache=key_cache,
+        value_cache=value_cache,
+        block_table=block_table[:num_seqs],
+        seq_lens=seq_lens_k,
+        kv_cache_dtype=kv_cache_dtype,
+        k_scale=k_scale,
+        v_scale=v_scale,
+        out_dtype=q.dtype,
+    )
+    return flash_moba_varlen_func(
+        q, 
+        k_dense, 
+        v_dense, 
+        cu_seqlens_q, 
+        cu_seqlens_k, 
+        max_seqlen_q=max_seqlen_q, 
+        max_seqlen_k=max_seqlen_k, 
+        moba_chunk_size=moba_chunk_size,
+        moba_topk=moba_topk,
+        causal=True
+    )
+    # Expand KV heads to match Q heads if using GQA/MQA.
+    # if q.shape[1] != k_dense.shape[1]:
+    #     assert q.shape[1] % k_dense.shape[1] == 0, (
+    #         f"head q {q.shape[1]} must be divisible by head kv "
+    #         f"{k_dense.shape[1]} for MoBA attention"
+    #     )
+    #     kv_groups = q.shape[1] // k_dense.shape[1]
+    #     k_dense = torch.repeat_interleave(k_dense, kv_groups, dim=1, output_size=q.shape[1])
+    #     v_dense = torch.repeat_interleave(v_dense, kv_groups, dim=1, output_size=q.shape[1])
+
+    # # Reuse existing MoBA implementation by padding per-sequence q on the left:
+    # # [prefix(zeros), suffix(real q)] so q and kv share the same cu_seqlens.
+    # q_full, out_indices = _pad_suffix_q_to_full_kv(
+    #     q=q,
+    #     cu_seqlens_q=cu_seqlens_q.to(dtype=torch.int32),
+    #     cu_seqlens_k=cu_seqlens_k,
+    # )
+
+    # out_full = moba_attn_varlen(
+    #     q=q_full,
+    #     k=k_dense,
+    #     v=v_dense,
+    #     cu_seqlens=cu_seqlens_k,
+    #     max_seqlen=max_seqlen_k,
+    #     moba_chunk_size=moba_chunk_size,
+    #     moba_topk=moba_topk,
+    # )
+    # return out_full.index_select(0, out_indices)

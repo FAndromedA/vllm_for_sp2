@@ -245,7 +245,7 @@ class MoBAAttention(nn.Module):
         o = o.reshape(batch_size, q_len, -1)
         # chk("moba_o", o, f"{self.layer_idx}.attn", show=True)
         o = self.o_proj(o)
-        chk("moba_output", o, f"{self.layer_idx}.attn", show=True)
+        # chk("moba_output", o, f"{self.layer_idx}.attn", show=True)
         if not output_attentions:
             attentions = None
 

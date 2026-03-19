@@ -4,6 +4,6 @@ triton==3.5.0
 flash_attn==2.8.3
 vllm==0.13.0
 flash-linear-attention==0.4.0
-moba==1.0.0
+flash_moba==2.0.0
 setuptools
 scipy

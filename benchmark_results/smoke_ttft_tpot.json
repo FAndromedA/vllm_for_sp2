@@ -1,0 +1,72 @@
+{
+  "meta": {
+    "base_url": "http://127.0.0.1:8711",
+    "model": "SSE_SWA_MOBA",
+    "model_path": "/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling",
+    "gen_tokens": 20,
+    "warmup_runs": 1,
+    "runs_per_len": 1,
+    "retry": 1,
+    "request_timeout_s": 120,
+    "lengths_requested": [
+      1024,
+      2048
+    ],
+    "timestamp": "20260314_031318",
+    "note": "To benchmark up to 128K, vLLM server max_model_len should be >= 131072."
+  },
+  "summary": [
+    {
+      "prompt_tokens": 1024,
+      "actual_prompt_tokens": 1024,
+      "runs_total": 1,
+      "runs_valid": 0,
+      "runs_failed": 1,
+      "ttft_mean_s": null,
+      "ttft_p50_s": null,
+      "ttft_p90_s": null,
+      "tpot_excl_first_mean_s": null,
+      "tpot_excl_first_p50_s": null,
+      "tpot_excl_first_p90_s": null,
+      "total_latency_mean_s": null
+    },
+    {
+      "prompt_tokens": 2048,
+      "actual_prompt_tokens": 2048,
+      "runs_total": 1,
+      "runs_valid": 0,
+      "runs_failed": 1,
+      "ttft_mean_s": null,
+      "ttft_p50_s": null,
+      "ttft_p90_s": null,
+      "tpot_excl_first_mean_s": null,
+      "tpot_excl_first_p50_s": null,
+      "tpot_excl_first_p90_s": null,
+      "total_latency_mean_s": null
+    }
+  ],
+  "runs": [
+    {
+      "prompt_tokens": 1024,
+      "run_index": 1,
+      "ok": false,
+      "error": "HTTPConnectionPool(host='127.0.0.1', port=8711): Max retries exceeded with url: /v1/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7efe9f63a5d0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "ttft_s": null,
+      "total_latency_s": null,
+      "generated_tokens": 0,
+      "tpot_excl_first_s": null,
+      "attempt": 2
+    },
+    {
+      "prompt_tokens": 2048,
+      "run_index": 1,
+      "ok": false,
+      "error": "HTTPConnectionPool(host='127.0.0.1', port=8711): Max retries exceeded with url: /v1/completions (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x7efe9f7e55b0>: Failed to establish a new connection: [Errno 111] Connection refused'))",
+      "ttft_s": null,
+      "total_latency_s": null,
+      "generated_tokens": 0,
+      "tpot_excl_first_s": null,
+      "attempt": 2
+    }
+  ]
+}

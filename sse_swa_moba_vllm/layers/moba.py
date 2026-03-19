@@ -491,6 +491,7 @@ class MoBA_Attention(nn.Module):
             num_kv_heads=self.tp_kv_heads,
             cache_config=self.cache_config,
             quant_config=self.quant_config,
+            per_layer_sliding_window=self.window_size,
             prefix=f"{prefix}.attn",
             is_moba=is_moba,
             moba_topk=self.moba_topk,

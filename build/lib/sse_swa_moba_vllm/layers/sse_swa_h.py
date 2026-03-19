@@ -368,6 +368,8 @@ class SSE_GDN_H(nn.Module, MambaBase):
 
         self.tp_heads = self.num_heads // self.tp_size
         self.sse_tp_kv_heads = max(1, self.sse_num_kv_heads // self.tp_size)
+        self.sse_tp_k_dim = self.sse_tp_kv_heads * self.sse_head_k_dim
+        self.sse_tp_v_dim = self.sse_tp_kv_heads * self.sse_head_v_dim
 
         # Consistency check: Ensure expand_v produces integer values
         if not math.isclose(self.sse_num_kv_heads * self.head_dim * expand_v, self.sse_value_dim, rel_tol=1e-5):
@@ -387,20 +389,10 @@ class SSE_GDN_H(nn.Module, MambaBase):
             )
         assert mode in ['chunk', 'fused_recurrent'], f"Not supported mode `{mode}`."
 
-        self.sse_q_proj = ColumnParallelLinear(
-            hidden_size, self.sse_key_dim, bias=False,
+        self.sse_qkv_proj = MergedColumnParallelLinear(
+            hidden_size, [self.sse_key_dim] * 2 + [self.sse_value_dim], bias=False,
             quant_config=quant_config,
-            prefix=f"{prefix}.sse_q_proj",
-        )
-        self.sse_k_proj = ColumnParallelLinear(
-            hidden_size, self.sse_key_dim, bias=False,
-            quant_config=quant_config,
-            prefix=f"{prefix}.sse_k_proj",
-        )
-        self.sse_v_proj = ColumnParallelLinear(
-            hidden_size, self.sse_value_dim, bias=False,
-            quant_config=quant_config,
-            prefix=f"{prefix}.sse_v_proj",
+            prefix=f"{prefix}.sse_qkv_proj",
         )
 
         self.lora_q_proj_A = ReplicatedLinear(
@@ -508,11 +500,14 @@ class SSE_GDN_H(nn.Module, MambaBase):
         # hidden_state [num_tokens, hidden_size]
         num_tokens = hidden_states.size(0)
 
-        sse_q1, _ = self.sse_q_proj(hidden_states)
-        sse_k1, _ = self.sse_k_proj(hidden_states)
+        # sse_q1, _ = self.sse_q_proj(hidden_states)
+        # sse_k1, _ = self.sse_k_proj(hidden_states)
+        # sse_v, _ = self.sse_v_proj(hidden_states)
+        sse_qkv, _ = self.sse_qkv_proj(hidden_states)
+        sse_q1, sse_k1, sse_v = torch.split(sse_qkv, [self.sse_tp_k_dim, self.sse_tp_k_dim, self.sse_tp_v_dim], dim=-1)
+
         sse_q2 = sse_q1 + self.lora_q_proj_B(self.lora_q_proj_A(hidden_states)[0])[0] # [0] because Linear returns output and bias
         sse_k2 = sse_k1 + self.lora_k_proj_B(self.lora_k_proj_A(hidden_states)[0])[0]
-        sse_v, _ = self.sse_v_proj(hidden_states)
         sse_a, _ = self.sse_a_proj(hidden_states)
         sse_b, _ = self.sse_b_proj(hidden_states) # [num_tokens, 2 * sse_tp_kv_heads]
         g, beta = fused_gdn_gating(self.A_log, sse_a, sse_b, self.dt_bias) 
