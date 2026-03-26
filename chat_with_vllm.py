@@ -16,7 +16,7 @@ def main():
     messages = [
         {
             "role": "system",
-            "content": "你是一个乐于助人的人工智能助手，请尽量用中文回答。",
+            "content": "你是一个乐于助人的人工智能助手，请尽量用中文回答。切记不要无意义的双语混杂回答。",
         }
     ]
     while True:
@@ -35,6 +35,7 @@ def main():
                 messages=messages,
                 temperature=0.7,
                 max_tokens=8192,
+                top_p=0.9,
                 extra_body={'repetition_penalty': 1.1},
             )
             assistant_msg = response.choices[0].message.content

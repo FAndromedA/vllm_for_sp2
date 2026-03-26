@@ -56,36 +56,67 @@ TORCHDYNAMO_VERBOSE=1 CUDA_VISIBLE_DEVICES=4,5,6,7 nohup vllm serve /mnt/jfzn/py
 
 TORCHDYNAMO_VERBOSE=1 nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling --max-model-len 65536 --served-model-name SSE_SWA_MOBA --gpu-memory-utilization 0.65 --tensor-parallel-size 4 --pipeline-parallel-size 2 --block-size 128 --dtype bfloat16 --port 8711 --trust-remote-code --enforce-eager > _vllm_serve_sse_swa_moba.log 2>&1
 
+===
+vllm 0.13.0
 
-TORCHDYNAMO_VERBOSE=1 nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling --max-model-len 131072 --no-enable-chunked-prefill --served-model-name SSE_SWA_MOBA --gpu-memory-utilization 0.9 --tensor-parallel-size 8 --block-size 128 --dtype bfloat16 --port 8711 --trust-remote-code --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' > _vllm_serve_sse_swa_moba.log 2>&1
+TORCHDYNAMO_VERBOSE=1 nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling --max-model-len 65536 --served-model-name SSE_SWA_MOBA --gpu-memory-utilization 0.85 --tensor-parallel-size 8 --block-size 128 --dtype bfloat16 --port 8711 --enable-chunked-prefill --trust-remote-code --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' > _vllm_serve_sse_swa_moba.log 2>&1
 
+====
+vllm 0.17.1
+nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling --max-model-len 16384 --served-model-name SSE_SWA_MOBA --gpu-memory-utilization 0.85 --tensor-parallel-size 8 --block-size 128 --dtype bfloat16 --port 8711 --enable-prefix-caching --mamba-cache-mode align --mamba-block-size 8 --max_num_batched_tokens 4096 --trust-remote-code --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' > _vllm2_serve_sse_swa_moba.log 2>&1
 
-nohup vllm serve /mnt/jfzn/models/Qwen3-4B-Thinking-2507 --max-model-len 524288 --no-enable-chunked-prefill --served-model-name Qwen --gpu-memory-utilization 0.9 --tensor-parallel-size 8 --block-size 128 --dtype bfloat16 --port 8711 --trust-remote-code --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' --no-enable-prefix-caching > _vllm_serve_qwen.log 2>&1
+====
+QWEN: nohup vllm serve /mnt/jfzn/models/Qwen3-4B-Thinking-2507 --max-model-len 4194304 --no-enable-chunked-prefill --served-model-name Qwen --gpu-memory-utilization 0.9 --tensor-parallel-size 8 --block-size 128 --dtype bfloat16 --port 8711 --trust-remote-code --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' --no-enable-prefix-caching --rope-scaling '{"rope_type":"yarn","factor":16.0,"original_max_position_embeddings":262144}' > _vllm_serve_qwen.log 2>&1
 
-TORCHDYNAMO_VERBOSE=1 CUDA_VISIBLE_DEVICES=4,5,6,7 nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_moba_gdn_u1to3_pureSwa_1.7b_dense_lr3en5_min0p1_bsz64_ep1_aux1en3_pt_data_800k/modeling2/ --max-model-len 65536 --served-model-name SSE_SWA_MOBA --gpu-memory-utilization 0.65 --block-size 128 --dtype bfloat16 --port 8711 --trust-remote-code --enforce-eager > _vllm_serve_sse_swa_moba_pureSWA.log 2>&1
+====
+pureSWA: TORCHDYNAMO_VERBOSE=1 CUDA_VISIBLE_DEVICES=4,5,6,7 nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_moba_gdn_u1to3_pureSwa_1.7b_dense_lr3en5_min0p1_bsz64_ep1_aux1en3_pt_data_800k/modeling2/ --max-model-len 65536 --served-model-name SSE_SWA_MOBA --gpu-memory-utilization 0.65 --block-size 128 --dtype bfloat16 --port 8711 --trust-remote-code --enforce-eager > _vllm_serve_sse_swa_moba_pureSWA.log 2>&1
 
-vllm bench throughput \
+/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/spb2_5b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_offdistill70k/modeling
+
+=== 
+vllm 0.13.0 if 0.17.1 replace the input-len and output-len with random-input-len and random-output-len
+
+nohup vllm bench throughput \
   --model /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling \
   --tensor-parallel-size 8 \
   --dtype bfloat16 \
-  --max-model-len 66536 \
+  --max-model-len 132000 \
   --gpu-memory-utilization 0.85 \
   --block-size 128 \
   --no-enable-chunked-prefill \
+  --no-enable-prefix-caching \
   --trust-remote-code \
   --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
-  --input-len 1024 \
+  --input-len 131072 \
   --output-len 128 \
-  --num-prompts 20000 > bench_throughput.log 2>&1 &
+  --num-prompts 1000 > bench2_sp2_throughput.log 2>&1 &
+
+nohup vllm bench throughput \
+  --model /mnt/jfzn/models/Qwen3-4B-Thinking-2507/ \
+  --tensor-parallel-size 8 \
+  --dtype bfloat16 \
+  --max-model-len 70000 \
+  --gpu-memory-utilization 0.85 \
+  --block-size 128 \
+  --no-enable-chunked-prefill \
+  --no-enable-prefix-caching \
+  --trust-remote-code \
+  --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
+  --input-len 65536 \
+  --output-len 128 \
+  --num-prompts 1000 > bench2_qwen_new_throughput.log 2>&1 &
+
+nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling --max-model-len 4194304 --served-model-name SSE_SWA_MOBA --gpu-memory-utilization 0.8 --max-num-seqs 2048 --no-enable-chunked-prefill --tensor-parallel-size 8 --block-size 128 --dtype bfloat16 --port 8711 --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' > _vllm_serve_sse_swa_moba.log 2>&1
 
 python benchmark_vllm_ttft_tpot.py \
   --base-url http://127.0.0.1:8711 \
   --model SSE_SWA_MOBA \
   --model-path /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling \
-  --runs-per-len 20 \
+  --runs-per-len 5 \
   --warmup-runs 3 \
   --gen-tokens 100 \
   --force-min-tokens \
+  --lengths "1m" \
   --ignore-eos
 
 lm-eval:
@@ -93,7 +124,7 @@ lm-eval:
 http://github.com/EleutherAI/lm-evaluation-harness/blob/d800e04dcb1ce96791d8b2926cf0cc7703d58457/lm_eval/_cli/run.py
 
 source /mnt/jfzn/miniconda3/bin/activate
-conda activate oylt_sp2
+conda activate zjh_lm_eval
 cd /mnt/jfzn/zjh/V2_dev_bench
 export HF_ENDPOINT=https://hf-mirror.com 
 export http_proxy="http://cloudml:gP1dY0uI0o@10.119.176.202:3128"
@@ -161,7 +192,7 @@ HF_ALLOW_CODE_EVAL=1 nohup lm_eval \
 nohup lm_eval \
   --model vllm \
   --model_args '{
-    "pretrained": "/mnt/jfzn/oylt/checkpoints/dapo_4b_sp2_final",
+    "pretrained": "/mnt/jfzn/oylt/checkpoints/sp2_deepscaler/global_step_10/",
     "tensor_parallel_size": 8,
     "gpu_memory_utilization": 0.9,
     "max_model_len": 131072,
@@ -173,10 +204,10 @@ nohup lm_eval \
   }' \
   --tasks aime25 \
   --num_fewshot 0 \
-  --batch_size 10 \
+  --batch_size 15 \
   --apply_chat_template \
   --log_samples \
-  --output_path lm_eval_results/aime25 > /mnt/jfzn/zjh/V2_dev_bench/logs/aime25_sp2_dapo_vllm.log 2>&1 &
+  --output_path lm_eval_results/aime25 > /mnt/jfzn/zjh/V2_dev_bench/logs/aime25_sp2_deepscaler_gs10_vllm.log 2>&1 &
 
 nohup lm_eval \
   --model vllm \
@@ -219,14 +250,14 @@ nohup lm_eval \
     "pretrained": "/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling",
     "tensor_parallel_size": 8,
     "gpu_memory_utilization": 0.8,
-    "max_model_len": 65536,
+    "max_model_len": 131072,
     "dtype": "bfloat16",
     "block_size": 128,
     "enable_chunked_prefill": true,
     "compilation_config": {"cudagraph_mode": "FULL_DECODE_ONLY"}
   }' \
   --tasks ruler \
-  --batch_size 64 \
-  --metadata '{"max_seq_lengths":[4096,8192,16384,32768]}' \
+  --batch_size 16 \
+  --metadata '{"max_seq_lengths":[65526,81920,131072]}' \
   --log_samples \
   --output_path lm_eval_results/ruler > /mnt/jfzn/zjh/V2_dev_bench/logs/ruler_sp2_vllm.log 2>&1 &

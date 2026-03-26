@@ -9,8 +9,13 @@ from vllm.config.model import ModelDType
 from vllm.utils.torch_utils import get_kv_cache_torch_dtype
 
 
-
-from vllm.attention.backends.abstract import AttentionMetadata
+from vllm.v1.attention.backend import (
+    AttentionBackend,
+    AttentionCGSupport,
+    AttentionMetadataBuilder,
+    CommonAttentionMetadata,
+)
+from vllm.v1.attention.backend import AttentionMetadata
 from vllm.config import CacheConfig, ModelConfig, get_current_vllm_config
 from vllm.distributed import (
     divide,
@@ -46,7 +51,7 @@ from vllm.model_executor.layers.fla.ops import chunk_gated_delta_rule, fused_rec
 from fla.ops.sse import prepare_sample_relpos_global_index_flat, softmax_and_mask
 from .ops.fused_recurrent import sse_fused_recurrent_gated_delta_rule
 
-from vllm.attention.layer import Attention
+from vllm.model_executor.layers.attention import Attention
 from vllm.v1.attention.backends.flash_attn import FlashAttentionBackend
 from vllm.model_executor.layers.layernorm import RMSNorm
 from vllm.model_executor.layers.fla.ops.kda import FusedRMSNormGated

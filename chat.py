@@ -13,7 +13,7 @@ AutoModelForCausalLM.register(SSESWAMoBAConfig, SSESWAMoBAForCausalLM, exist_ok=
 # 1. 修改成你的模型路径
 # =====================
 # model_name = "Qwen/Qwen2-1.5B-Instruct"   # 也可以换成本地路径
-model_name = input("输入路径：")
+# model_name = input("输入路径：")
 # =====================
 # 2. 加载 tokenizer
 # =====================
@@ -23,11 +23,12 @@ model_name = input("输入路径：")
 # )
 
 PATH = '/mnt/jfzn/models/Qwen3-4B-Thinking-2507'
+model_name = '/mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling'
 
 # import fla
 # PATH = '/mnt/jfzn/sbh/train_exp/transformer-1B-100B'
 
-tokenizer = AutoTokenizer.from_pretrained(PATH,
+tokenizer = AutoTokenizer.from_pretrained(model_name,
                                         padding_side='left',
                                         truncation_side='left',
                                         trust_remote_code=True)
@@ -37,52 +38,56 @@ if tokenizer.pad_token is None:
 # =====================
 # 3. 加载模型
 # =====================
+# tok = AutoTokenizer.from_pretrained(model_name)
+# print(tok.chat_template)
+# exit(0)
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
     torch_dtype=torch.bfloat16,
     trust_remote_code=True
 ).cuda()
-
-model.eval()
+# model.eval()
 
 # =====================
 # 4. 构造对话历史
 # =====================
 messages = [
+    {"role": "system", "content": "你是一个乐于助人的人工智能助手，请尽量用中文回答。切记不要无意义的双语混杂回答。"},
 ]
 
 def chat():
     print("输入 exit 退出")
     print(model.device)
-    # while True:
-    if True:
-        # user_input = input("\nUser: ")
+    while True:
+    # if True:
+        user_input = input("\nUser: ")
         # user_input = "你好，请介绍一下你自己。"
-        prompts = [
-            # "What is the best thing to do in San Francisco? The best thing to do in San Francisco is eat a sandwich and sit in Dolores Park on a sunny day.\nQuestion: What is the best thing to do in San Francisco?",
-            # "Explain java fx basic concepts",
-            # "Question: Janet’s ducks lay 16 eggs per day. She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market?"
-            # "你好，请介绍一下你自己。"
-            "我想要去中国旅游，帮我规划一个7天的旅游计划"
-        ]
-        # if user_input.lower() == "exit":
-        #     break
+        # prompts = [
+        #     # "What is the best thing to do in San Francisco? The best thing to do in San Francisco is eat a sandwich and sit in Dolores Park on a sunny day.\nQuestion: What is the best thing to do in San Francisco?",
+        #     # "Explain java fx basic concepts",
+        #     # "Question: Janet’s ducks lay 16 eggs per day. She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market?"
+        #     # "你好，请介绍一下你自己。"
+        #     "我想要去中国旅游，帮我规划一个7天的旅游计划"
+        # ]
+        if user_input.lower() == "exit":
+            break
         
-        # messages.append({"role": "user", "content": user_input})
+        messages.append({"role": "user", "content": user_input})
         
+        prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         # 使用 chat template 构造输入
-        conversation_prompts = [
-            # {"role": "system", "content": "You are a helpful assistant."}, 
-            [{'role' : 'user', 'content' : prompt}] for prompt in prompts
-        ]
-        prompts = [
-            tokenizer.apply_chat_template(conversation_prompt, tokenize = False,  \
-            add_generation_prompt=True) for conversation_prompt in conversation_prompts
-        ]
+        # conversation_prompts = [
+        #     # {"role": "system", "content": "You are a helpful assistant."}, 
+        #     [{'role' : 'user', 'content' : prompt}] for prompt in prompts
+        # ]
+        # prompts = [
+        #     tokenizer.apply_chat_template(conversation_prompt, tokenize = False,  \
+        #     add_generation_prompt=True) for conversation_prompt in conversation_prompts
+        # ]
 
-        for prompt in prompts :
-            print(prompt)
-            print('==============')
+        # for prompt in prompts :
+        #     print(prompt)
+        #     print('==============')
         inputs = tokenizer(prompt, padding=True, truncation=True, max_length=65536, return_tensors='pt').to('cuda')
         print("input shape: ", inputs.input_ids.shape)
 
@@ -98,10 +103,12 @@ def chat():
             repetition_penalty=1.1,
         )
         response = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        for i in range(len(prompts)):
-            print("=====Begin======")
-            print(response[i])
-            print("======End======")
+        # for i in range(len(prompts)):
+        #     print("=====Begin======")
+        #     print(response[i])
+        #     print("======End======")
+        messages.append({"role": "assistant", "content": response[0]})
+        print("\nAssistant: ", response[0])
 
 
 if __name__ == "__main__":

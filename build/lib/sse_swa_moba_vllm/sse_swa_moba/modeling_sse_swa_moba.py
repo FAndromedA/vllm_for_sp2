@@ -59,6 +59,8 @@ from vllm.model_executor.models.utils import (
     make_layers,
     maybe_prefix,
 )
+from vllm.model_executor.layers.mamba.mamba_utils import MambaStateCopyFunc
+
 
 logger = init_logger(__name__)
 
@@ -293,12 +295,15 @@ class SseSwaMobaModel(nn.Module):
                 # residual=residual,
                 positions=positions,
             )
-        
+
         if not get_pp_group().is_last_rank:
             return IntermediateTensors({
                 "hidden_states": hidden_states,
                 "residual": residual,
             })
+        # if self.config.fuse_norm:
+        #     hidden_states, _ = self.norm(hidden_states, residual)
+        # else:
         hidden_states = self.norm(hidden_states)
         return hidden_states
     
@@ -317,11 +322,14 @@ class SseSwaMobaForCausalLM(
         self.model_config = vllm_config.model_config
         cache_config = vllm_config.cache_config
         scheduler_config = vllm_config.scheduler_config
-        assert not cache_config.enable_prefix_caching, (
-            "SseSwaMoba currently does not support prefix caching"
-        )
         self.quant_config = vllm_config.quant_config
 
+        if cache_config.mamba_cache_mode == "all":
+            raise NotImplementedError(
+                "SseSwaMoba currently does not support 'all' prefix caching, "
+                "please use '--mamba-cache-mode=align' instead"
+            )
+        
         super().__init__()
         self.config = config
         self.scheduler_config = scheduler_config
@@ -370,7 +378,7 @@ class SseSwaMobaForCausalLM(
     def get_mamba_state_dtype_from_config(
         cls,
         vllm_config: "VllmConfig",
-    ) -> tuple[torch.dtype, torch.dtype]:
+    ) -> tuple[torch.dtype, torch.dtype, torch.dtype] | tuple[torch.dtype]:
         return SSE_GDN_H.SSE_GDN_H_state_dtype(
             vllm_config.model_config.dtype, vllm_config.cache_config.mamba_cache_dtype
         )
@@ -378,7 +386,7 @@ class SseSwaMobaForCausalLM(
     @classmethod
     def get_mamba_state_shape_from_config(
         cls, vllm_config: "VllmConfig"
-    ) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
+    ) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]] | tuple[tuple[int, int]]:
         parallel_config = vllm_config.parallel_config
         hf_config = vllm_config.model_config.hf_config
         tp_size = parallel_config.tensor_parallel_size
@@ -387,10 +395,15 @@ class SseSwaMobaForCausalLM(
         #     if vllm_config.speculative_config
         #     else 0
         # )
+        n_v = (
+            hf_config.num_v_heads
+            if getattr(hf_config, "num_v_heads", None) is not None
+            else hf_config.num_heads
+        )
         return SSE_GDN_H.SSE_GDN_H_state_shape(
             tp_size,
             num_heads=hf_config.num_heads,
-            num_v_heads=hf_config.num_heads,
+            num_v_heads=n_v,
             head_k_dim=hf_config.head_dim,
             head_v_dim=hf_config.head_dim * hf_config.expand_v,
             use_short_conv=hf_config.use_short_conv,
@@ -398,6 +411,10 @@ class SseSwaMobaForCausalLM(
             sparse_partition=hf_config.num_sparse_partition,
         )
     
+    @classmethod
+    def get_mamba_state_copy_func(cls) -> tuple[MambaStateCopyFunc, MambaStateCopyFunc, MambaStateCopyFunc] | tuple[MambaStateCopyFunc]:
+        return SSE_GDN_H.get_SSE_GDN_H_state_copy_func()
+
     def compute_logits(
         self,
         hidden_states: torch.Tensor,

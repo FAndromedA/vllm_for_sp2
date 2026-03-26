@@ -25,7 +25,7 @@ class SseSwaMobaConfig(PretrainedConfig):
             num_sparse_partition: int = 4,
             num_writer: int = 2,
             num_reader: int = 2,
-            rope_scaling: float | None = None,
+            rope_scaling: dict | float | None = None,
             linear_attn_type: str = "gdn",
             sse_implementation: str = "varlen",
             sse_qk_relu: bool = False,

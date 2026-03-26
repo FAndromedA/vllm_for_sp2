@@ -46,14 +46,14 @@ def parse_length_token(text: str) -> int:
         raise ValueError("empty length token")
     if token.endswith("k"):
         prompt_len = int(float(token[:-1]) * 1024)
-        if prompt_len == max_model_len:
+        if prompt_len >= max_model_len:
             prompt_len -= 128  # reserve some tokens for generation
         if prompt_len > max_model_len:
             raise ValueError("length exceeds max_model_len")
         return prompt_len
     if token.endswith("m"):
-        raise ValueError("length in millions is not supported due to vLLM max_model_len limit")
-        # return int(float(token[:-1]) * 1024 * 1024)
+        # raise ValueError("length in millions is not supported due to vLLM max_model_len limit")
+        return int(float(token[:-1]) * 1024 * 1024 - 128)
     return int(token)
 
 
@@ -355,7 +355,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup-runs", type=int, default=2, help="warmup request count")
     parser.add_argument("--runs-per-len", type=int, default=3, help="runs per prompt length")
     parser.add_argument("--retry", type=int, default=1, help="retry count per run on failure")
-    parser.add_argument("--request-timeout-s", type=int, default=900, help="request timeout")
+    parser.add_argument("--request-timeout-s", type=int, default=5000, help="request timeout")
     parser.add_argument(
         "--force-min-tokens",
         action="store_true",
@@ -494,3 +494,28 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+"""
+python benchmark_vllm_ttft_tpot.py \
+  --base-url http://127.0.0.1:8711 \
+  --model SSE_SWA_MOBA \
+  --model-path /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling \
+  --runs-per-len 20 \
+  --warmup-runs 3 \
+  --gen-tokens 100 \
+  --force-min-tokens \
+  --lengths 4m \
+  --ignore-eos
+
+python benchmark_vllm_ttft_tpot.py \
+  --base-url http://127.0.0.1:8711 \
+  --model Qwen \
+  --model-path /mnt/jfzn/models/Qwen3-4B-Thinking-2507 \
+  --runs-per-len 1 \
+  --warmup-runs 1 \
+  --gen-tokens 100 \
+  --force-min-tokens \
+  --lengths 1m,2m,4m \
+  --ignore-eos
+
+"""

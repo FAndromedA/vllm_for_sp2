@@ -4,7 +4,7 @@ from einops import rearrange, repeat
 from torch import nn
 from torch.nn import functional as F
 
-from vllm.attention.backends.abstract import AttentionMetadata
+from vllm.v1.attention.backend import AttentionMetadata
 from vllm.config import CacheConfig, ModelConfig, get_current_vllm_config
 from vllm.distributed import (
     divide,
