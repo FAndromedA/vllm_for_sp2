@@ -1,2 +1,0 @@
-prompt_tokens,actual_prompt_tokens,runs_total,runs_valid,runs_failed,ttft_mean_s,ttft_p50_s,ttft_p90_s,tpot_excl_first_mean_s,tpot_excl_first_p50_s,tpot_excl_first_p90_s,total_latency_mean_s
-2097024,2097024,1,1,0,367.8603906594217,367.8603906594217,367.8603906594217,0.014840453731441739,0.014840453731441739,0.014840453731441739,369.3295955788344
