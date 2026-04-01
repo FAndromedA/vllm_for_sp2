@@ -63,7 +63,25 @@ TORCHDYNAMO_VERBOSE=1 nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/
 
 ====
 vllm 0.17.1
-nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling --max-model-len 16384 --served-model-name SSE_SWA_MOBA --gpu-memory-utilization 0.85 --tensor-parallel-size 8 --block-size 128 --dtype bfloat16 --port 8711 --enable-prefix-caching --mamba-cache-mode align --mamba-block-size 8 --max_num_batched_tokens 4096 --trust-remote-code --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' > _vllm2_serve_sse_swa_moba.log 2>&1
+
+nohup vllm serve /mnt/jfzn/pyq/ColossalAI-dev/checkpoints/sse_swa128_drop0p5_moba4k_top12_4b_lr5en6_bsz32_pt69p86_ct512k5btk_sft500k_rsft500k_24k/modeling --max-model-len 131072 --served-model-name SSE_SWA_MOBA --gpu-memory-utilization 0.85 --tensor-parallel-size 8 --block-size 128 --dtype bfloat16 --port 8711 --enable-prefix-caching --mamba-cache-mode align --mamba-block-size 8 --max_num_batched_tokens 4096 --trust-remote-code --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' > _vllm2_serve_sse_swa_moba.log 2>&1
+
+vllm serve /mnt/jfzn/sbh/SpikeBrain-2.0-VL_real/SpikeBrain-2.0-VL \
+  --served-model-name SPB2VL \
+  --max-model-len 131072 \
+  --gpu-memory-utilization 0.85 \
+  --tensor-parallel-size 8 \
+  --block-size 128 \
+  --dtype bfloat16 \
+  --port 8711 \
+  --trust-remote-code \
+  --limit-mm-per-prompt '{"image": 16, "video": 2}' \
+  --enable-prefix-caching \
+  --mamba-cache-mode align \
+  --mamba-block-size 8 \
+  --max_num_batched_tokens 4096 \
+  --compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY"}' \
+  > _vllm2_serve_spb2vl.log 2>&1 &
 
 ====
 QWEN: nohup vllm serve /mnt/jfzn/models/Qwen3-4B-Thinking-2507 --max-model-len 4194304 --no-enable-chunked-prefill --served-model-name Qwen --gpu-memory-utilization 0.9 --tensor-parallel-size 8 --block-size 128 --dtype bfloat16 --port 8711 --trust-remote-code --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' --no-enable-prefix-caching --rope-scaling '{"rope_type":"yarn","factor":16.0,"original_max_position_embeddings":262144}' > _vllm_serve_qwen.log 2>&1

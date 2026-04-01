@@ -419,10 +419,10 @@ class SSE_GDN_H(nn.Module, MambaBase):
             )
         assert mode in ['chunk', 'fused_recurrent'], f"Not supported mode `{mode}`."
 
-        self.sse_qkv_proj = MergedColumnParallelLinear(
+        self.qkv_proj = MergedColumnParallelLinear(
             hidden_size, [self.sse_key_dim] * 2 + [self.sse_value_dim], bias=False,
             quant_config=quant_config,
-            prefix=f"{prefix}.sse_qkv_proj",
+            prefix=f"{prefix}.qkv_proj",
         )
 
         self.lora_q_proj_A = ReplicatedLinear(
@@ -533,7 +533,7 @@ class SSE_GDN_H(nn.Module, MambaBase):
         # sse_q1, _ = self.sse_q_proj(hidden_states)
         # sse_k1, _ = self.sse_k_proj(hidden_states)
         # sse_v, _ = self.sse_v_proj(hidden_states)
-        sse_qkv, _ = self.sse_qkv_proj(hidden_states)
+        sse_qkv, _ = self.qkv_proj(hidden_states)
         sse_q1, sse_k1, sse_v = torch.split(sse_qkv, [self.sse_tp_k_dim, self.sse_tp_k_dim, self.sse_tp_v_dim], dim=-1)
 
         sse_q2 = sse_q1 + self.lora_q_proj_B(self.lora_q_proj_A(hidden_states)[0])[0] # [0] because Linear returns output and bias
@@ -962,14 +962,14 @@ class SlidingWindowAttention(nn.Module):
         self.qk_norm = swa_qk_norm
         self.max_position_embeddings = max_position_embeddings
 
-        self.swa_qkv_proj = QKVParallelLinear(
+        self.qkv_proj = QKVParallelLinear(
             hidden_size=hidden_size,
             head_size=self.head_dim,
             total_num_heads=self.total_num_heads,
             total_num_kv_heads=self.total_num_kv_heads,
             bias=qkv_bias,
             quant_config=quant_config,
-            prefix=f"{prefix}.swa_qkv_proj",
+            prefix=f"{prefix}.qkv_proj",
         )
 
         if self.qk_norm:
@@ -1025,7 +1025,7 @@ class SlidingWindowAttention(nn.Module):
         positions: torch.Tensor,
         output: torch.Tensor,
     ):
-        qkv, _ = self.swa_qkv_proj(hidden_states)
+        qkv, _ = self.qkv_proj(hidden_states)
         swa_q, swa_k, swa_v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         if self.qk_norm:
             # swa_q, swa_k = self.swa_q_norm(swa_q), self.swa_k_norm(swa_k)

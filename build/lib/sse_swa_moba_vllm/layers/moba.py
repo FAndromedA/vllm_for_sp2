@@ -460,7 +460,7 @@ class MoBA_Attention(nn.Module):
         qk_norm: bool = False,
         window_size: int | None = None,
         rope_theta: float | None = 10000.,
-        rope_scaling: float | None = None,
+        rope_scaling: dict | float | None = None,
         is_moba: bool = False,
         moba_chunk_size: int = 1024,
         moba_topk: int = 4,
@@ -537,10 +537,16 @@ class MoBA_Attention(nn.Module):
         #     is_neox_style=True,
         #     dtype=torch.float32,
         # )
-        rope_parameters = dict()
-        rope_parameters['rope_theta'] = rope_theta
+        rope_parameters = {"rope_theta": rope_theta}
         if rope_scaling is not None:
-            rope_parameters['factor'] = rope_scaling
+            if isinstance(rope_scaling, dict):
+                # vLLM get_rope expects rope_type-style dictionaries.
+                rope_parameters.update(rope_scaling)
+                if "type" in rope_parameters and "rope_type" not in rope_parameters:
+                    rope_parameters["rope_type"] = rope_parameters.pop("type")
+            else:
+                # Backward-compatible path for legacy float scaling configs.
+                rope_parameters["factor"] = rope_scaling
         self.rotary = get_rope(
             self.head_dim,
             max_position=self.max_position_embeddings,

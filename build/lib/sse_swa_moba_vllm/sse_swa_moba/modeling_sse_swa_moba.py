@@ -53,6 +53,7 @@ from vllm.model_executor.models.interfaces import (
 from vllm.model_executor.models.utils import (
     AutoWeightsLoader,
     PPMissingLayer,
+    WeightsMapper,
     extract_layer_index,
     is_pp_missing_parameter,
     make_empty_intermediate_tensors_factory,
@@ -423,10 +424,6 @@ class SseSwaMobaForCausalLM(
 
     
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]):
-        """
-        将 HuggingFace 权重映射并加载到当前 vLLM 模型中。
-        请将此方法放置在你的主模型类（例如 ModelForCausalLM 或 BaseModel）中。
-        """
         
         # 1. HF 命名到 vLLM 模块路径的映射字典
         name_mapping = {
@@ -434,9 +431,6 @@ class SseSwaMobaForCausalLM(
             # === SSE_GDN_H (sse_attn) 内部模块 ===
             "attn.A_log": "attn.sse_attn.A_log",
             "attn.dt_bias": "attn.sse_attn.dt_bias",
-            # "attn.sse_q_proj": "attn.sse_attn.sse_q_proj",
-            # "attn.sse_k_proj": "attn.sse_attn.sse_k_proj",
-            # "attn.sse_v_proj": "attn.sse_attn.sse_v_proj",
             "attn.lora_q_proj.0": "attn.sse_attn.lora_q_proj_A",
             "attn.lora_q_proj.1": "attn.sse_attn.lora_q_proj_B",
             "attn.lora_k_proj.0": "attn.sse_attn.lora_k_proj_A",
@@ -458,20 +452,20 @@ class SseSwaMobaForCausalLM(
             # 注：sse_merge_norm 和 swa_merge_norm 直接在 SSE_SWA_Hybrid 中，路径无需映射
         }
 
-        # 2. 需要合并权重的张量映射 (HF 名称 -> vLLM 目标名称, QKV shard_id)
+        # 2. 需要合并权重的张量映射 (vLLM 目标名称, HF 名称, QKV shard_id)
         stacked_params_mapping = [
             # MoBA and Full Attention QKV 合并
             ("attn.qkv_proj", "attn.q_proj", "q"),
             ("attn.qkv_proj", "attn.k_proj", "k"),
             ("attn.qkv_proj", "attn.v_proj", "v"),
             # SSE Attention QKV 合并
-            ("attn.sse_attn.sse_qkv_proj", "attn.sse_q_proj", 0),
-            ("attn.sse_attn.sse_qkv_proj", "attn.sse_k_proj", 1),
-            ("attn.sse_attn.sse_qkv_proj", "attn.sse_v_proj", 2),
+            ("attn.sse_attn.qkv_proj", "attn.sse_q_proj", 0),
+            ("attn.sse_attn.qkv_proj", "attn.sse_k_proj", 1),
+            ("attn.sse_attn.qkv_proj", "attn.sse_v_proj", 2),
             # SWA Attention QKV 合并 
-            ("attn.swa_attn.swa_qkv_proj", "attn.swa_q_proj", "q"),
-            ("attn.swa_attn.swa_qkv_proj", "attn.swa_k_proj", "k"),
-            ("attn.swa_attn.swa_qkv_proj", "attn.swa_v_proj", "v"),
+            ("attn.swa_attn.qkv_proj", "attn.swa_q_proj", "q"),
+            ("attn.swa_attn.qkv_proj", "attn.swa_k_proj", "k"),
+            ("attn.swa_attn.qkv_proj", "attn.swa_v_proj", "v"),
             
             # MLP Gate/Up 合并 
             ("mlp.gate_up_proj", "mlp.gate_proj", 0),
@@ -496,10 +490,6 @@ class SseSwaMobaForCausalLM(
                     shard_id = shard
                     break
 
-            # 如果遇到模型中不需要的参数（例如不需要加载的 rotary_emb.inv_freq），可在这里跳过
-            if "rotary_emb.inv_freq" in name:
-                continue
-
             if name not in params_dict:
                 # logger.warning(f"跳过未在 vLLM 模型结构中找到的权重: {name}")
                 continue
@@ -517,7 +507,6 @@ class SseSwaMobaForCausalLM(
                 # 针对 QKVParallelLinear / MergedColumnParallelLinear 加载指定 shard
                 weight_loader(param, loaded_weight, shard_id)
             else:
-                # 标准加载
                 weight_loader(param, loaded_weight)
         
         # --- 步骤 E: 检查是否有模型参数未被加载 ---
