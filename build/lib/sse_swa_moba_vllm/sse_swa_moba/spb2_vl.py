@@ -227,7 +227,7 @@ class SPB2VLTextModel(SseSwaMobaForCausalLM):
                 logger.warning(f"跳过未在 vLLM 文本模型结构中找到的权重: {name}")
                 continue
             
-            # print(f"加载权重: {name} (源权重名: {name}, shard_id: {shard_id})")
+            print(f"加载权重: {name} (源权重名: {name}, shard_id: {shard_id})")
             param = params_dict[name]
             loaded_param_names.add(name)
             

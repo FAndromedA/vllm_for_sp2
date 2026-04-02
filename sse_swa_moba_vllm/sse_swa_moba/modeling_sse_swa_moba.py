@@ -406,7 +406,7 @@ class SseSwaMobaForCausalLM(
             num_heads=hf_config.num_heads,
             num_v_heads=n_v,
             head_k_dim=hf_config.head_dim,
-            head_v_dim=hf_config.head_dim * hf_config.expand_v,
+            head_v_dim=int(hf_config.head_dim * hf_config.expand_v),
             use_short_conv=hf_config.use_short_conv,
             conv_kernel_size=hf_config.conv_size,
             sparse_partition=hf_config.num_sparse_partition,

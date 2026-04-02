@@ -15,5 +15,5 @@ def register_model():
     )
     ModelRegistry.register_model(
         "SPB2VLForConditionalGeneration",
-        "sse_swa_moba_vllm.sse_swa_moba.sp2_vl:SPB2VLForConditionalGeneration",
+        "sse_swa_moba_vllm.sse_swa_moba.spb2_vl:SPB2VLForConditionalGeneration",
     )

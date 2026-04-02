@@ -1,6 +1,7 @@
 .gitignore
 benchmark_vllm_ttft_tpot.py
 chat.py
+chat_with_multimodal_vllm.py
 chat_with_vllm.py
 hf_attn_weights.pth
 hf_glah_weights.pth
@@ -48,4 +49,7 @@ sse_swa_moba_vllm/layers/sse_swa_h.py
 sse_swa_moba_vllm/layers/ops/fused_recurrent.py
 sse_swa_moba_vllm/sse_swa_moba/__init__.py
 sse_swa_moba_vllm/sse_swa_moba/configuration_SseSwaMoba.py
+sse_swa_moba_vllm/sse_swa_moba/configuration_spb2_vl.py
 sse_swa_moba_vllm/sse_swa_moba/modeling_sse_swa_moba.py
+sse_swa_moba_vllm/sse_swa_moba/see_swa_moba_vl_backup.py
+sse_swa_moba_vllm/sse_swa_moba/spb2_vl.py
