@@ -244,11 +244,11 @@ class SPB2VLTextModel(SseSwaMobaForCausalLM):
                 weight_loader(param, loaded_weight)
         
         # --- 步骤 E: 检查是否有模型参数未被加载 ---
-        missing_params = set(params_dict.keys()) - loaded_param_names
-        if missing_params:
-            logger.warning(f"以下文本模型参数未在加载的权重中找到: {missing_params}, 已加载参数: {loaded_param_names}， 已加载数量: {len(loaded_param_names)}/{len(params_dict)}")
-        else:
-            logger.info(f"所有文本模型参数均已成功加载.")
+        # missing_params = set(params_dict.keys()) - loaded_param_names
+        # if missing_params:
+        #     logger.warning(f"以下文本模型参数未在加载的权重中找到: {missing_params}, 已加载参数: {loaded_param_names}， 已加载数量: {len(loaded_param_names)}/{len(params_dict)}")
+        # else:
+        #     logger.info(f"所有文本模型参数均已成功加载.")
         
         return loaded_param_names
 
